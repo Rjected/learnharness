@@ -60,6 +60,7 @@ import {
 	type ModelSlotName,
 	type ModelsSettings,
 } from "../core/settings.ts";
+import { googleAliasTarget, isGoogleAlias } from "./model-aliases.ts";
 
 /** The picker's client-safe model entry (contract: core/contracts/models.ts). */
 export type ModelDto = ModelCatalogEntry;
@@ -173,6 +174,9 @@ function keyedProviderIds(): Set<string> {
 
 /** Project one catalog model to the client DTO. */
 export function toModelDto(model: Model<Api>): ModelDto {
+	// Google's -latest aliases show the prices of the model Google serves.
+	const target = isGoogleAlias(model.provider, model.id) ? googleAliasTarget(model.id) : undefined;
+	const priced = (target && piModels().getModel(model.provider, target)) || model;
 	return {
 		id: model.id,
 		name: model.name,
@@ -181,10 +185,10 @@ export function toModelDto(model: Model<Api>): ModelDto {
 		input: [...model.input],
 		supportedLevels: getSupportedThinkingLevels(model),
 		cost: model.provider === CLAUDE_CODE_PROVIDER || model.provider === CUSTOM_PROVIDER.id ? null : {
-			input: model.cost.input,
-			output: model.cost.output,
-			cacheRead: model.cost.cacheRead,
-			cacheWrite: model.cost.cacheWrite,
+			input: priced.cost.input,
+			output: priced.cost.output,
+			cacheRead: priced.cost.cacheRead,
+			cacheWrite: priced.cost.cacheWrite,
 		},
 		contextWindow: model.provider === CLAUDE_CODE_PROVIDER ? null : model.contextWindow,
 		maxTokens: model.provider === CLAUDE_CODE_PROVIDER ? null : model.maxTokens,
