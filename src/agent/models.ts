@@ -22,6 +22,8 @@ import { createClaudeCodeProvider } from "./claude-code/provider.ts";
 import { streamClaudeCode } from "./claude-code/stream.ts";
 import { nativeSubscriptionId, nativeSubscriptionModel } from "./subscription-bridge.ts";
 import { nativeSubscriptionStream } from "./subscription-stream.ts";
+import { salvageMalformedCalls } from "./malformed-salvage.ts";
+import { GEMINI_STALL_MS, retryTransientFailures } from "./transient-retry.ts";
 
 /** App identity is immutable and shared by Models and every native Agent.
  * Agent's default Pi attribution otherwise overrides the Models identity. */
@@ -180,7 +182,14 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 			}
 			const purpose = typeof background === "function" ? background : () => background;
 			const stream = spec.provider === "chatgpt" ? chatGPTStream(purpose, lifecycle) : nativeId ? nativeSubscriptionStream(models.getProvider(nativeId)!, purpose, lifecycle) : models.streamSimple.bind(models);
-			return stream(requestModel, context, requestOptions);
+			const call = (signal: AbortSignal) => {
+				const result = stream(requestModel, context, { ...requestOptions, signal });
+				// Gemini's garbled-call stop keeps the step's intact text + calls.
+				return model.provider === "google" ? salvageMalformedCalls(result) : result;
+			};
+			// A step that died on the wire before any output is re-issued; Gemini also
+			// gets the silence watchdog since its thinking streams.
+			return retryTransientFailures(call, options?.signal, undefined, model.provider === "google" ? GEMINI_STALL_MS : 0);
 		},
 	};
 }
