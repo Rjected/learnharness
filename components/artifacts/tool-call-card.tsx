@@ -39,6 +39,9 @@ function headlineArg(tool: string, input: unknown): string {
 	if (tool === "list_propositions" && typeof inp.session === "string" && inp.session.length > 0) {
 		return inp.session;
 	}
+	if (tool === "anki_lookup" && Array.isArray(inp.terms)) {
+		return inp.terms.length ? inp.terms.filter((t) => typeof t === "string").join(" ") : "overview";
+	}
 	return "";
 }
 

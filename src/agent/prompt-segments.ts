@@ -31,6 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PATHS, PROMPTS_OVERRIDE_DIR } from "../../config.ts";
 import { FRAGMENT_RE, isValidSegmentPath, type PromptAgent, type PromptSegmentInfo } from "../core/prompt-segments.ts";
+import type { StudyLanguage } from "../core/languages.ts";
 
 const PROMPTS_DIR = path.join(PATHS.root, "src", "agent", "prompts");
 
@@ -94,6 +95,16 @@ export function listSourceSegments(agent: PromptAgent): Array<{ path: string; sh
 		}
 	}
 	return segments;
+}
+
+/** The studied language's fragment for one agent (prompts/languages/<id>/<agent>.md), or "" when
+ *  it has none. Composed after every other segment; not part of the override system. */
+export function languagePrompt(agent: PromptAgent, language: StudyLanguage): string {
+	try {
+		return fs.readFileSync(path.join(PROMPTS_DIR, "languages", language, `${agent}.md`), "utf-8");
+	} catch {
+		return "";
+	}
 }
 
 /**

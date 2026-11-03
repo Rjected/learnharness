@@ -15,6 +15,7 @@ import {
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { PathText } from "@/components/file-path-chip";
+import { GlossScope } from "@/components/language/gloss";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { BrailleSpinner } from "@/components/braille-spinner";
@@ -948,6 +949,13 @@ export function Chat({
 	useEffect(() => {
 		void syncTurns();
 	}, [syncTurns]);
+	// Speech clips, dictation and card audio cost money too:
+	// refetch the meter when one of them may have been billed.
+	useEffect(() => {
+		const onAudio = () => void syncTurns();
+		window.addEventListener("lh:audio-usage", onAudio);
+		return () => window.removeEventListener("lh:audio-usage", onAudio);
+	}, [syncTurns]);
 	// After the learner's own turn ends the log has a fresh entry — and the
 	// Post-turn settle (the SLIMMED watch — push-architecture S3,
 	// 2026-10-02): our own stream just ended. Two instant LOCAL actions
@@ -1559,7 +1567,9 @@ export function Chat({
 														const anchor = sourceId && sourceTextParts.get(sourceId) === part.id ? messageAnchorId(sourceId) : undefined;
 														return (
 															<div key={part.id || pi} id={anchor} data-source-message-id={sourceId ?? undefined} className="lh-source-passage">
-																<MessageResponse>{part.text}</MessageResponse>
+																<GlossScope>
+																	<MessageResponse>{part.text}</MessageResponse>
+																</GlossScope>
 															</div>
 														);
 													}

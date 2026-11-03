@@ -4,10 +4,52 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2Icon, MicIcon } from "lucide-react";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { Hint } from "@/components/ui/hint";
-import { deepgramListenUrl, type DictationLanguage } from "@/src/core";
+import { deepgramListenUrl, SPEECH_KEY_ID, SPEECH_KEYLESS, type DictationLanguage } from "@/src/core";
 import { useDictationLanguage } from "@/components/dictation-preference";
 import { setDictationActive } from "@/components/dictation-state";
 export { isDictationActive } from "@/components/dictation-state";
+import { encodeWav } from "@/components/language/wav";
+import { currentChatId, notifyAudioUsage } from "@/components/language/player";
+import { languageStatus, useStudyProfile } from "@/components/language/status";
+
+/**
+ * Dictation engines. "gemini" records the clip and has Gemini transcribe
+ * mixed English + the studied language when the run ends (the Google key;
+ * no Deepgram key needed); "deepgram" is the streaming engine. The pick is
+ * per device, and only offered while a language is studied — otherwise
+ * dictation is always Deepgram.
+ */
+export type DictationEngine = "gemini" | "deepgram";
+const ENGINE_KEY = "lh:dictation-engine";
+
+export function dictationEngine(): DictationEngine {
+	if (!languageStatus()?.language) return "deepgram";
+	try {
+		return localStorage.getItem(ENGINE_KEY) === "deepgram" ? "deepgram" : "gemini";
+	} catch {
+		return "gemini";
+	}
+}
+
+export function setDictationEngine(engine: DictationEngine): void {
+	try {
+		localStorage.setItem(ENGINE_KEY, engine);
+	} catch {}
+}
+
+/** Recorded clip → transcript (the gemini engine's stop path). */
+async function transcribeClip(frames: Int16Array[]): Promise<string> {
+	const chat = currentChatId();
+	const res = await fetch(`/api/stt/transcribe${chat ? `?chat=${chat}` : ""}`, {
+		method: "POST",
+		headers: { "Content-Type": "audio/wav" },
+		body: encodeWav(frames, 16000),
+	});
+	const body = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+	notifyAudioUsage();
+	if (!res.ok) throw new Error(body.error ?? `Transcription failed (${res.status})`);
+	return body.text ?? "";
+}
 
 /**
  * Voice dictation — the cloud engine (STT wave 1, 2026-09-17).
@@ -320,6 +362,9 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 	/** Resolvers waiting for the run to fully end (finish(), owner
 	 *  2026-10-01): released by cleanup() — every terminal path runs it. */
 	const waitersRef = useRef<Array<() => void>>([]);
+	/** This run's engine, and (gemini) the recorded frames awaiting upload. */
+	const engineRef = useRef<DictationEngine>("deepgram");
+	const recordedRef = useRef<Int16Array[]>([]);
 
 	/** Flush the buffered transcript into the primary input — question claim
 	 *  first, composer fallback. Called exactly once per run, at cleanup; the
@@ -341,6 +386,7 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 			safetyRef.current = null;
 		}
 		pendingRef.current = [];
+		recordedRef.current = [];
 		for (const track of streamRef.current?.getTracks() ?? []) track.stop();
 		streamRef.current = null;
 		sourceRef.current?.disconnect();
@@ -437,6 +483,8 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		reconnectsRef.current = 0;
 		bufferRef.current = []; // fresh run, fresh buffer (round 2)
 		pendingRef.current = []; // fresh run, fresh queue (mitigation A)
+		recordedRef.current = [];
+		engineRef.current = dictationEngine();
 		const gen = ++genRef.current;
 		let language: DictationLanguage;
 		try {
@@ -482,6 +530,9 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 				const msg = e.data as { type: string; rms?: number; buffer?: ArrayBuffer };
 				if (msg.type === "level") {
 					levelRef.current = msg.rms ?? 0; // never reset to zero (dictate pattern)
+				} else if (msg.type === "audio" && engineRef.current === "gemini") {
+					// Recorded, not streamed: the whole clip uploads when the run ends.
+					recordedRef.current.push(msg.buffer as unknown as Int16Array);
 				} else if (msg.type === "audio") {
 					const ws = wsRef.current;
 					if (ws && ws.readyState === WebSocket.OPEN) ws.send(msg.buffer!);
@@ -512,6 +563,10 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 			return;
 		}
 		if (gen !== genRef.current) return;
+		if (engineRef.current === "gemini") {
+			setPhase("recording");
+			return;
+		}
 		let token: string;
 		try {
 			token = await tokenPromise;
@@ -540,6 +595,27 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		sourceRef.current = null;
 		workletRef.current?.disconnect();
 		workletRef.current = null;
+
+		if (engineRef.current === "gemini") {
+			const frames = recordedRef.current;
+			recordedRef.current = [];
+			if (frames.length === 0) {
+				cleanup();
+				return;
+			}
+			transcribeClip(frames)
+				.then((text) => {
+					if (gen !== genRef.current) return; // cancelled meanwhile
+					if (text) bufferRef.current.push(text);
+					cleanup();
+				})
+				.catch((e) => {
+					if (gen !== genRef.current) return;
+					setError(e instanceof Error ? e.message : "Transcription failed");
+					cleanup();
+				});
+			return;
+		}
 
 		const ws = wsRef.current;
 		if (ws && ws.readyState === WebSocket.OPEN) {
@@ -650,6 +726,11 @@ export function DictationBar({ dictation }: { dictation: Dictation }) {
 	 *  the error — the surface is clean when the user returns. Any other
 	 *  error keeps the old behavior (click = retry, which clears). */
 	const keyless = error === DICTATION_KEYLESS;
+	const speechKeyless = error === SPEECH_KEYLESS;
+	const profile = useStudyProfile();
+	const { language: deepgramLanguage } = useDictationLanguage();
+	const [engine, setEngine] = useState<DictationEngine>("deepgram");
+	useEffect(() => setEngine(dictationEngine()), [profile]);
 	const [levels, setLevels] = useState<number[]>(() => new Array(METER_CELLS).fill(0));
 	/** Adaptive cell count (owner round 2): derived from the meter's
 	 *  measured width — narrow rows show fewer bars instead of
@@ -693,6 +774,27 @@ export function DictationBar({ dictation }: { dictation: Dictation }) {
 
 	if (!active) {
 		return (
+			<div className="flex w-full min-w-0 items-center gap-1">
+			{profile && <Hint
+				label={engine === "gemini"
+					? `Mixed English + ${profile.nativeName} (Gemini) — click for Deepgram streaming`
+					: `Deepgram streaming — click for mixed English + ${profile.nativeName} (Gemini)`}
+				side="top"
+			>
+				<button
+					type="button"
+					data-testid="dictation-engine"
+					onClick={() => {
+						const next = engine === "gemini" ? "deepgram" : "gemini";
+						setDictationEngine(next);
+						setEngine(next);
+						clearError();
+					}}
+					className="flex h-7 shrink-0 items-center rounded-md border border-border/50 bg-card/50 px-1.5 text-xs text-muted-foreground/70 shadow-lg backdrop-blur transition-colors hover:border-border hover:text-muted-foreground"
+				>
+					{engine === "gemini" ? profile.dictationChip : (deepgramLanguage ?? "en").toUpperCase()}
+				</button>
+			</Hint>}
 			<Hint
 				// The error line truncates in the button; its tooltip reveals it.
 				label={error ?? "Dictate"}
@@ -702,9 +804,9 @@ export function DictationBar({ dictation }: { dictation: Dictation }) {
 				<button
 					type="button"
 					onClick={() => {
-						if (keyless) {
+						if (keyless || speechKeyless) {
 							clearError();
-							openSettings("keys", DEEPGRAM_KEY_ID);
+							openSettings("keys", keyless ? DEEPGRAM_KEY_ID : SPEECH_KEY_ID);
 						} else {
 							toggle();
 						}
@@ -717,6 +819,7 @@ export function DictationBar({ dictation }: { dictation: Dictation }) {
 					<span className="max-w-full truncate">{error ?? "Dictate"}</span>
 				</button>
 			</Hint>
+			</div>
 		);
 	}
 

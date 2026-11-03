@@ -6,6 +6,7 @@ import { VisualCard } from "@/components/artifacts/visual-card";
 import { ProbeDoneCard } from "@/components/artifacts/probe-done-card";
 import { ToolCallCard } from "@/components/artifacts/tool-call-card";
 import { ProblemCard, ConcludeCard } from "@/components/practice-cards";
+import { AnkiCardsCard } from "@/components/artifacts/anki-cards-card";
 
 /**
  * Artifact renderer registry — the extension point for tool-part UI.
@@ -50,4 +51,7 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	// discipline (their results are pre-formatted strings too).
 	list_sessions: ToolCallCard,
 	list_propositions: ToolCallCard,
+	// The Anki pair: lookup is a quiet tool line; proposals carry Add buttons.
+	anki_lookup: ToolCallCard,
+	anki_propose_cards: AnkiCardsCard,
 };

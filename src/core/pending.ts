@@ -171,6 +171,8 @@ const ACTIVITY_LABELS: Record<string, string> = {
 	pdf: "Reading a PDF…",
 	plan_init: "Drawing up the plan…",
 	probe_done: "Concluding the assessment…",
+	anki_lookup: "Checking your Anki cards…",
+	anki_propose_cards: "Writing flashcards…",
 };
 
 /** The activity label for ONE running tool (owner, streaming round

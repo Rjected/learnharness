@@ -179,6 +179,15 @@ export function StatsBar({
 								</div>
 							)}
 							{providers.includes("ChatGPT") && <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer" className="underline underline-offset-2">Manage ChatGPT usage</a>}
+							{pricing?.audio && (
+								<div className="flex justify-between gap-2" data-testid="stats-audio">
+									<span>
+										Audio ({pricing.audio.clips} clip{pricing.audio.clips === 1 ? "" : "s"}, {pricing.audio.transcriptions} dictation
+										{pricing.audio.transcriptions === 1 ? "" : "s"})
+									</span>
+									<span className="tabular-nums text-card-foreground">{formatUsd(pricing.audio.cost)}</span>
+								</div>
+							)}
 							{unpriced > 0 && (
 								<div className="flex justify-between gap-2">
 									<span>Unpriced turns</span>

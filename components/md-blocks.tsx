@@ -36,7 +36,8 @@ import {
 	tableDataToMarkdown,
 	useIsCodeFenceIncomplete,
 } from "streamdown";
-import type { ExtraProps } from "streamdown";
+import type { Components, ExtraProps } from "streamdown";
+import { Say } from "@/components/language/say";
 import { MERMAID_FONT_SIZE, renderMermaid } from "@/components/mermaid-render";
 import { MermaidError } from "@/components/mermaid-error";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
@@ -469,4 +470,5 @@ export const mdComponents = {
 	span: MathDisplay,
 	strong: MarkdownStrong,
 	blockquote: MarkdownBlockquote,
-};
+	"lh-say": Say,
+} as Record<string, unknown> as Components;

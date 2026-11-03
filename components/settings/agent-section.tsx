@@ -62,9 +62,13 @@ import { Hint } from "@/components/ui/hint";
 import type React from "react";
 import {
 	COMPACTION_THRESHOLD_FLOOR,
+	LANGUAGES,
 	MODEL_SLOTS,
 	resolveSettings,
+	STUDY_LANGUAGES,
+	studyLanguageOf,
 	type AgentSettings,
+	type StudyChoice,
 	type CompactionSettings,
 	type GraphSettings,
 	type ModelSlotName,
@@ -119,6 +123,11 @@ export function composeQuizMechanics(agent: AgentSettings | undefined, mechanics
 	// Mixed is explain + quiz both on; `quiz` is written
 	// only here, so older settings without it read as before.
 	return { ...agent, tools: { ...agent?.tools, explain: mechanics !== "choice", quiz: mechanics === "mixed" } };
+}
+
+/** Compose the studied language (core/languages.ts): "none" turns the language layer off. Pure. */
+export function composeStudyLanguage(agent: AgentSettings | undefined, language: StudyChoice): AgentSettings {
+	return { ...agent, language };
 }
 
 /** Compose the prober graph-tools toggle (wave 7): its own key in the
@@ -735,6 +744,48 @@ export function AgentSection({
 						</SettingsRow>
 					);
 				})}
+			</SettingsGroup>
+
+			<SettingsGroup label="Language learning" testid="group-language">
+				{/* What is being studied: the tutor's language rules, the Anki tools and
+				    Review page, a speaker + reading popup on every run of the language,
+				    and mixed dictation. None = plain LearnHarness. Absent = Chinese. */}
+				{(() => {
+					const current: StudyChoice = studyLanguageOf(agent) ?? "none";
+					return (
+						<SettingsRow
+							label="Studying"
+							hint="Anki review, audio, reading popups and the tutor's language rules"
+							testid="study-language-row"
+						>
+							<div
+								role="radiogroup"
+								aria-label="Language being studied"
+								className="flex rounded-lg border border-border/60 bg-muted/30 p-0.5"
+							>
+								{(["none", ...STUDY_LANGUAGES] as const).map((choice) => {
+									const active = choice === current;
+									return (
+										<button
+											key={choice}
+											type="button"
+											role="radio"
+											aria-checked={active}
+											data-testid={`study-language-${choice}`}
+											onClick={() => onSectionChange(composeStudyLanguage(agent, choice))}
+											className={cn(
+												"h-8 rounded-md px-3 text-sm font-medium transition-colors",
+												active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+											)}
+										>
+											{choice === "none" ? "None" : LANGUAGES[choice].label}
+										</button>
+									);
+								})}
+							</div>
+						</SettingsRow>
+					);
+				})()}
 			</SettingsGroup>
 
 			<SettingsGroup label="Tools" testid="group-tools">

@@ -24,6 +24,7 @@ import { lsTool } from "./tools/ls.ts";
 import { findTool } from "./tools/find.ts";
 import { grepTool } from "./tools/grep.ts";
 import { healToolRecord } from "./tools/heal.ts";
+import { ankiTools, type AnkiToolsContext } from "./tools/anki.ts";
 import type { GraphStore } from "../core/ports.ts";
 
 export { jobTools };
@@ -276,6 +277,8 @@ export interface ProberToolContext extends ProbeDoneContext {
 	 *  master switch AND the agent.graphTools toggle (settings-resolution).
 	 *  Absent = the gate is closed, no map tools (tests drive this seam). */
 	graphStore?: GraphStore;
+	/** The learner's Anki collection, while a language is studied: present = anki_lookup is registered. */
+	anki?: AnkiToolsContext;
 }
 
 /** The prober's tool set: probe quiz (no nodeId) + ask + the learner-fs
@@ -330,6 +333,7 @@ export function createProberTools(
 				ls: lsTool,
 				find: findTool,
 				grep: grepTool,
+				...(ctx.anki ? { anki_lookup: ankiTools(ctx.anki).anki_lookup! } : {}),
 				// Job dispatch in the probe phase (owner ruling, 2026-09-20):
 				// research + pdf are ALWAYS available in every phase — the
 				// prober can verify facts or read learner PDFs while assessing.
@@ -404,6 +408,8 @@ export interface TeacherToolContext extends PlanToolContext {
 	spawn: (job: JobRecord, input: ResearchInput | DemoInput | VisualInput | PdfInput) => void;
 	/** Retained search-status seam; research dispatch is available keylessly. */
 	searchAvailable?: () => boolean;
+	/** The learner's Anki collection, while a language is studied: present = anki_lookup + anki_propose_cards. */
+	anki?: AnkiToolsContext;
 }
 
 /**
@@ -472,6 +478,7 @@ export function createTeacherTools(
 			grep: grepTool,
 			...planTools(ctx),
 			...jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable }),
+			...(ctx.anki ? ankiTools(ctx.anki) : {}),
 		},
 		withoutMechanics(enabled),
 		),

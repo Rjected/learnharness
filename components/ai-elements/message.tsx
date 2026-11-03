@@ -29,6 +29,7 @@ import {
   useState,
 } from "react";
 import remarkBreaks from "remark-breaks";
+import { remarkSay } from "@/components/language/remark-say";
 import {
   Streamdown,
   type PluginConfig,
@@ -349,7 +350,7 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 export const streamdownPlugins = {
   cjk: {
     ...cjk,
-    remarkPluginsAfter: [...cjk.remarkPluginsAfter, remarkBreaks],
+    remarkPluginsAfter: [...cjk.remarkPluginsAfter, remarkBreaks, remarkSay],
   },
   code,
   math: createMathPlugin({ singleDollarTextMath: true }),
@@ -382,6 +383,7 @@ export const MessageResponse = memo(
         components={mdComponents}
         plugins={streamdownPlugins}
         remend={streamdownRemend}
+        allowedTags={{ "lh-say": [] }}
         {...props}
       >
         {content}

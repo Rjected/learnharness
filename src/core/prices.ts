@@ -1,5 +1,6 @@
 /** Client-safe accounting folds. Rates and calculation live on the server,
  * using Pi's catalog and calculateCost; no copied pricing table lives here. */
+import type { AudioPricing } from "./audio-usage.ts";
 import type { CallUsage, ChatRecord, JobRecord, TurnUsage } from "./contracts.ts";
 import { NATIVE_SUBSCRIPTIONS } from "./contracts/subscriptions.ts";
 
@@ -11,6 +12,8 @@ export interface SessionPricing {
 	subscriptionProviders?: string[];
 	/** Derived at read time, keyed by the persisted turn's id. Never stored. */
 	turnCosts: Record<string, number | null>;
+	/** This lesson's speech clips + dictation — already included in `cost`. */
+	audio?: AudioPricing;
 }
 
 export function isChatGPTPlan(model: string | undefined): boolean {

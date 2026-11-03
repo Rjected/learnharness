@@ -22,6 +22,8 @@ Instead of just giving you an explanation, it uses your answers and thinking to 
 
 ![LearnHarness teaching session](docs/assets/teaching-session.png)
 
+> **This branch (`language-learning`)** adds Chinese and Japanese study with your own Anki: Anki-aware lessons and flashcards, in-app Anki review, a speaker on every sentence, Yomitan-style reading popups and mixed dictation. Set-up and details: [docs/language-learning.md](docs/language-learning.md).
+
 ## How it works
 
 1. **Measure.** Before teaching, the agent finds where your understanding ends on each part the lesson depends on. Your answers, confidence, and thinking show it where to start.

@@ -87,3 +87,7 @@ export * from "./coverage.ts";
 // ONE session→markdown formatter — the extractor's view and the user-facing
 // export share it. Pure, browser-safe.
 export * from "./session-markdown.ts";
+// Language learning: the studied language's profile + popup shapes, and the
+// Anki review config, card wire shapes and template av walk. Pure, browser-safe.
+export * from "./languages.ts";
+export * from "./anki.ts";

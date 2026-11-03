@@ -61,6 +61,8 @@ import {
 	type TurnInput,
 } from "../core/input-events.ts";
 import { steerDelivered } from "../core/contracts.ts";
+import { ankiToolPort } from "./anki-cards.ts";
+import { LANGUAGES } from "../core/languages.ts";
 import type {CallUsage} from "../core/contracts.ts";
 
 /**
@@ -440,6 +442,8 @@ export async function handleChatInput(
 		},
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
+	// The teacher's Anki tools exist only while a language is studied.
+	const anki = effective.agent.language ? { anki: { port: ankiToolPort, language: LANGUAGES[effective.agent.language] } } : {};
 	const agentOpts: AgentBuildOptions = {
 		engine,
 		callPurpose,
@@ -454,6 +458,8 @@ export async function handleChatInput(
 		// point as the tool delta — the agent layer composes the system
 		// prompt fresh per turn, swapping in any enabled override segments.
 		promptSwitches: effective.agent.prompts,
+		// The studied language's fragment joins the prompt (prompts/languages/).
+		language: effective.agent.language,
 	};
 	// PRACTICE BRANCH (owner design, 2026-10-04): a kind:"practice"
 	// session builds the practitioner from turn 1 — no prober→teacher
@@ -496,6 +502,7 @@ export async function handleChatInput(
 						// The registry drop's signal (2026-09-20): no live engine
 						// = no research tool in the teacher's registry.
 						searchAvailable,
+						...anki,
 					},
 					agentOpts,
 				)
@@ -514,6 +521,7 @@ export async function handleChatInput(
 						// knowledge graph through tools when the gate opens —
 						// graph master switch AND the agent.graphTools toggle.
 						...(graphToolsEnabled(effective) ? { graphStore: stores.graphStore } : {}),
+						...anki,
 					},
 					agentOpts,
 				);

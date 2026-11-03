@@ -1,6 +1,7 @@
 "use client";
 
 import { ToolContentResponse } from "@/components/ai-elements/message";
+import { GlossScope } from "@/components/language/gloss";
 import { cn } from "@/lib/utils";
 import type { ArtifactPartProps } from "@/src/core";
 
@@ -133,7 +134,7 @@ export function ConcludeCard({ part }: ArtifactPartProps) {
 			    (owner round 3): the same quiet 50% register as quiz explanations. */}
 			{verdict.length > 0 && (
 				<div className="text-sm text-foreground/50">
-					<ToolContentResponse>{verdict}</ToolContentResponse>
+					<GlossScope><ToolContentResponse>{verdict}</ToolContentResponse></GlossScope>
 				</div>
 			)}
 			{/* Then the divider, then the labeled model solution (Slice G: the
@@ -144,7 +145,7 @@ export function ConcludeCard({ part }: ArtifactPartProps) {
 					<div>
 						<div className="mb-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Model solution</div>
 						<div className="lh-prose text-[15px]">
-							<ToolContentResponse>{reveal}</ToolContentResponse>
+							<GlossScope><ToolContentResponse>{reveal}</ToolContentResponse></GlossScope>
 						</div>
 					</div>
 				</>

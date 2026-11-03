@@ -48,9 +48,17 @@ export { runPiTurn, piTurnResponse, type PiTurnHandle, type PiTurnSpec } from ".
 export * from "./observability.ts";
 export * from "./model-catalog.ts";
 export { subscriptionControlsResponse, subscriptionBrowserResponse } from "./web-subscription-http.ts";
-export { sessionCost } from "./pricing.ts";
+export { sessionCost, sessionCostWithAudio } from "./pricing.ts";
 export { claudeCodeInstallationResponse } from "./claude-code.ts";
 // The custom endpoint module (registers into piModels() + probes for models).
 // No import side effects; the boot sync lives in stores.ts.
 export * from "./custom-provider.ts";
 export { customProviderGet, customProviderMutation } from "./custom-provider-http.ts";
+// Language learning: the studied language, speech (TTS + mixed dictation),
+// the reading popup, and the Anki bridge (AnkiConnect, behind /api/anki/*).
+export * from "./language.ts";
+export * from "./tts.ts";
+export * from "./stt.ts";
+export { glossResponse } from "./gloss.ts";
+export * from "./anki.ts";
+export * from "./anki-cards.ts";

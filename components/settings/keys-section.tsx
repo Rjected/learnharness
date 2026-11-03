@@ -30,6 +30,7 @@ import {
 	CUSTOM_MODEL_DEFAULT_MAX_TOKENS,
 	CUSTOM_PROVIDER,
 	normalizeBaseUrl,
+	SPEECH_KEY_ID,
 	type AuthKeyStatus,
 	type CustomModel,
 	type CustomModelOverride,
@@ -41,6 +42,7 @@ import { ProviderMenuList } from "./model-menu.tsx";
 import { MenuShell } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { DictationLanguageSetting } from "@/components/dictation-language";
+import { useStudyProfile } from "@/components/language/status";
 
 /** One pi-ai provider with plain API-key auth (the Platform seam —
  *  derived from pi-ai's own env-key table; no drift possible). */
@@ -381,6 +383,9 @@ export function KeysSection({
 	/** The unfolded row (its id), null = all folded. Seeded by the
 	 *  deep-link (initialRow) and re-followed when it retargets. */
 	const [openRow, setOpenRow] = useState<string | null>(initialRow ?? null);
+	const profile = useStudyProfile();
+	/** A speaker button's deep link lands on the Audio group, far below the fold. */
+	const audioRef = useRef<HTMLDivElement>(null);
 	/** The paste editor for a freshly chosen Add-provider target. */
 	const [adding, setAdding] = useState<ProviderKeyInfo | null>(null);
 	const [addError, setAddError] = useState<string | null>(null);
@@ -438,6 +443,10 @@ export function KeysSection({
 	useEffect(() => {
 		if (initialRow !== undefined) setOpenRow(initialRow);
 	}, [initialRow]);
+	const audioShown = !!profile && statuses !== null;
+	useEffect(() => {
+		if (audioShown && initialRow === SPEECH_KEY_ID) audioRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+	}, [audioShown, initialRow]);
 
 	async function saveKey(id: string, value: string): Promise<string | null> {
 		const res = await fetch(`/api/keys/${id}`, {
@@ -479,6 +488,8 @@ export function KeysSection({
 	}
 
 	const { providerRows, toolRows, unknownRows, addable } = classifyKeys(statuses, providers);
+	const speechStatus: AuthKeyStatus = statuses.find((s) => s.id === SPEECH_KEY_ID)
+		?? { id: SPEECH_KEY_ID, info: null, present: false, masked: null, source: "none", shadowedByEnv: false };
 
 	async function saveNewProvider(p: ProviderKeyInfo, value: string) {
 		const err = await saveKey(p.envVar, value);
@@ -578,6 +589,42 @@ export function KeysSection({
 			<SettingsGroup label="External CLI" testid="group-external-cli">
 				<ClaudeCodeInstallationStatus />
 			</SettingsGroup>
+
+			{profile && <div ref={audioRef}><SettingsGroup label="Audio" testid="group-audio">
+				{/* The studied language's speech (speaker buttons, mixed dictation) runs
+				    on a Google key. Provider rows only list saved keys, so without one
+				    this group carries the row the speaker buttons deep-link to. */}
+				{speechStatus.present ? (
+					<p data-testid="audio-on" className="px-1 text-[11px] leading-relaxed text-muted-foreground/70">
+						Audio is on: {profile.label} speech and mixed dictation use your Google key above.
+					</p>
+				) : <>
+					<KeyTableRow
+						label="Google"
+						docsUrl="https://aistudio.google.com/apikey"
+						status={speechStatus}
+						expanded={openRow === SPEECH_KEY_ID}
+						onToggle={() => setOpenRow(openRow === SPEECH_KEY_ID ? null : SPEECH_KEY_ID)}
+						onSave={async (v) => {
+							const err = await saveKey(SPEECH_KEY_ID, v);
+							if (!err) setOpenRow(null);
+							return err;
+						}}
+						onCancel={() => setOpenRow(null)}
+						onDelete={() => deleteKey(SPEECH_KEY_ID)}
+						testid="key-audio"
+					/>
+					<div data-testid="audio-setup-hint" className="px-1 text-[11px] leading-relaxed text-muted-foreground/70">
+						<p>Hear every bit of {profile.label} in your lessons with a free Google key:</p>
+						<ol className="my-1 list-decimal pl-4">
+							<li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">aistudio.google.com/apikey</a> and sign in with any Google account.</li>
+							<li>Accept the terms. AI Studio makes a project and a key for you; no billing or Cloud console needed.</li>
+							<li>Copy the key and paste it into the Google row above.</li>
+						</ol>
+						<p>Each clip is generated once and saved, so replays cost nothing. The same key also unlocks Gemini models.</p>
+					</div>
+				</>}
+			</SettingsGroup></div>}
 
 			{(["Dictation", "Search"] as const).map((label) => <SettingsGroup key={label} label={label} testid={label === "Dictation" ? "group-dictation" : "group-search"}>
 				{toolRows.filter((status) => label === "Dictation" ? status.id === "DEEPGRAM_API_KEY" : status.id !== "DEEPGRAM_API_KEY").map((status) => (

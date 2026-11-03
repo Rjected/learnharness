@@ -7,6 +7,9 @@ import { piModels } from "../agent/models.ts";
 import { CUSTOM_PROVIDER } from "../core/auth-keys.ts";
 import { CLAUDE_CODE_PROVIDER } from "../core/contracts/claude-code.ts";
 import type { CallUsage, ChatRecord, JobRecord, TurnUsage } from "../core/contracts.ts";
+import type { SessionPricing } from "../core/prices.ts";
+import { audioPricing } from "../core/audio-usage.ts";
+import { readAudioUsage } from "../store/audio-usage.ts";
 import { googleAliasTarget, isGoogleAlias } from "./model-aliases.ts";
 import { isSubscriptionModel, sessionCost as foldSessionCost, turnCost as foldTurnCost, jobCost as foldJobCost } from "../core/prices.ts";
 
@@ -62,3 +65,10 @@ export function jobCost(job: Pick<JobRecord, "usage">): number | null {
 	return foldJobCost(job, callCost);
 }
 
+/** The lesson's model turns plus its audio (Gemini TTS clips + dictation). */
+export function sessionCostWithAudio(record: Pick<ChatRecord, "turns" | "id">): SessionPricing {
+	const pricing = sessionCost(record);
+	const audio = audioPricing(readAudioUsage().filter((e) => e.chatId === record.id));
+	if (audio.clips + audio.transcriptions === 0) return pricing;
+	return { ...pricing, cost: pricing.cost + audio.cost, audio };
+}
