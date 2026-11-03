@@ -284,6 +284,9 @@ describe("tool toggles (core/pending.ts + factories)", () => {
 		const free = createProberTools(ctx, { explain: true });
 		assert.deepEqual(Object.keys(free).sort(), ["ask_user_question", "find", "grep", "ls", "pdf", "probe_done", "read", "recall", "research"]);
 		assert.ok(createProberTools(ctx, { probe_done: false }).probe_done, "probe_done always-on");
+		// Mixed: explain + quiz both on arms BOTH quizzing tools.
+		const mixed = createProberTools(ctx, { explain: true, quiz: true });
+		assert.ok(mixed.probe && mixed.recall, "mixed carries probe and recall");
 	});
 
 	it("createTeacherTools: {research: false} removes exactly research; unknown keys are no-ops", () => {
@@ -316,6 +319,9 @@ describe("tool toggles (core/pending.ts + factories)", () => {
 			freeFull.filter((t) => t !== "research"),
 			"mechanics and plain toggles compose",
 		);
+		// Mixed: the teacher carries quiz AND explain.
+		const mixedTeach = createTeacherTools(ctx, { explain: true, quiz: true });
+		assert.ok(mixedTeach.quiz && mixedTeach.explain, "mixed carries quiz and explain");
 	});
 });
 

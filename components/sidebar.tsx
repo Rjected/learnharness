@@ -129,8 +129,9 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 		void window.lh?.getZoom?.().then(setZoomVar);
 
 		const stored = localStorage.getItem(STORAGE_KEY);
-		// Default: open (first run introduces the sidebar).
-		setOpen(stored === null ? true : stored === "1");
+		// Default: open (first run introduces the sidebar) — except on a
+		// phone-width browser, where it would squeeze the page.
+		setOpen(stored === null ? window.innerWidth >= 768 : stored === "1");
 		setMounted(true);
 		return () => off?.();
 	}, []);

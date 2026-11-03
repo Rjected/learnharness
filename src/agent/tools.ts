@@ -310,7 +310,11 @@ export function createProberTools(
 	// differently-typed literals makes the whole object's type a union —
 	// unusable as Record<string, AgentTool<any>> downstream).
 	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { recall: probeExplainTool } : { probe: probeQuizTool };
+		mechanics === "free"
+			? { recall: probeExplainTool }
+			: mechanics === "mixed"
+				? { probe: probeQuizTool, recall: probeExplainTool }
+				: { probe: probeQuizTool };
 	// healToolRecord (owner, 2026-10-09 — the whitehead generalization):
 	// the standard argument heal over the WHOLE registry — every tool,
 	// not just the one the latest wobble incident landed on.
@@ -419,9 +423,14 @@ export interface TeacherToolContext extends PlanToolContext {
  *  managed, NOT individually toggleable: quiz/explain never pass through
  *  filterEnabledTools (the 2026-09-19 wedge ruling stands — a quiz-less
  *  prober collapses its assessment flow). */
-export function quizMechanics(enabled?: EnabledTools): "choice" | "free" {
-	return enabled?.explain === true ? "free" : "choice";
+export function quizMechanics(enabled?: EnabledTools): QuizMechanics {
+	if (enabled?.explain !== true) return "choice";
+	// Mixed: explain AND quiz both armed — the tutor picks
+	// per question. `quiz: true` is only ever written by the Mixed choice.
+	return enabled.quiz === true ? "mixed" : "free";
 }
+
+export type QuizMechanics = "choice" | "free" | "mixed";
 
 /** Strip the mechanics keys so filterEnabledTools can never drop the
  *  quizzing tools (the derivation above is their only switch). */
@@ -442,7 +451,11 @@ export function createTeacherTools(
 	// Same widening as the prober's (see above) — the conditional spread of
 	// two differently-typed literals collapses into an unusable union type.
 	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
+		mechanics === "free"
+			? { explain: teachExplainToolFor(ctx) }
+			: mechanics === "mixed"
+				? { quiz: teachQuizToolFor(ctx), explain: teachExplainToolFor(ctx) }
+				: { quiz: teachQuizToolFor(ctx) };
 	// healToolRecord — same standard as the prober's registry (above).
 	return healToolRecord(
 		filterEnabledTools(

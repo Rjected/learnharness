@@ -115,8 +115,10 @@ export function composeTool(agent: AgentSettings | undefined, id: string, on: bo
  *  free-recall (explain in, quiz out); anything else is multiple choice.
  *  `quiz` itself is never written (mechanics-managed — see quizMechanics
  *  in agent/tools.ts). Pure — exported for tests. */
-export function composeQuizMechanics(agent: AgentSettings | undefined, mechanics: "choice" | "free"): AgentSettings {
-	return { ...agent, tools: { ...agent?.tools, explain: mechanics === "free" } };
+export function composeQuizMechanics(agent: AgentSettings | undefined, mechanics: "choice" | "free" | "mixed"): AgentSettings {
+	// Mixed is explain + quiz both on; `quiz` is written
+	// only here, so older settings without it read as before.
+	return { ...agent, tools: { ...agent?.tools, explain: mechanics !== "choice", quiz: mechanics === "mixed" } };
 }
 
 /** Compose the prober graph-tools toggle (wave 7): its own key in the
@@ -766,7 +768,7 @@ export function AgentSection({
 				    quizzing tool BOTH agents carry (prober checks + teach checks).
 				    Persisted as agent.tools.explain; absent = Multiple choice. */}
 				{(() => {
-					const free = agent?.tools?.explain === true;
+					const current = agent?.tools?.explain !== true ? "choice" : agent.tools.quiz === true ? "mixed" : "free";
 					return (
 						<SettingsRow
 							label="Quizzing"
@@ -778,8 +780,8 @@ export function AgentSection({
 								aria-label="Quizzing mechanics"
 								className="flex rounded-lg border border-border/60 bg-muted/30 p-0.5"
 								>
-								{(["choice", "free"] as const).map((m) => {
-									const active = m === "free" ? free : !free;
+								{(["choice", "free", "mixed"] as const).map((m) => {
+									const active = m === current;
 									return (
 										<button
 											key={m}
@@ -793,7 +795,7 @@ export function AgentSection({
 												active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
 											)}
 										>
-											{m === "choice" ? "Multiple choice" : "Free recall"}
+											{m === "choice" ? "Multiple choice" : m === "free" ? "Free recall" : "Mixed"}
 										</button>
 									);
 								})}

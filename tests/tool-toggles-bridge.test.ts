@@ -87,10 +87,13 @@ describe("parseAgentSettingsBody: tool keys validate at write time", () => {
 		assert.deepEqual(r.ok && r.settings.tools, { explain: true });
 	});
 
-	it("unknown keys are rejected with the supported list (the quiz wedge never persists)", () => {
-		const r = parse({ quiz: false });
+	it("unknown keys are rejected with the supported list", () => {
+		// `quiz` is writable as half of the Mixed mechanic; it
+		// never filters tools, so quiz:false still cannot wedge the prober.
+		assert.equal(parse({ quiz: false }).ok, true);
+		const r = parse({ bogus: false });
 		assert.equal(r.ok, false);
-		assert.match(!r.ok && r.error, /unknown tool "quiz" \(supported: research, demo, visual, pdf, explain\)/);
+		assert.match(!r.ok && r.error, /unknown tool "bogus" \(supported: research, demo, visual, pdf, explain, quiz\)/);
 		const typo = parse({ reasearch: false });
 		assert.equal(typo.ok, false);
 		assert.match(!typo.ok && typo.error, /unknown tool "reasearch"/);

@@ -1,5 +1,6 @@
 "use client";
 
+import { enterSubmits } from "@/components/touch-enter";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CornerDownLeftIcon, DumbbellIcon } from "lucide-react";
@@ -267,7 +268,7 @@ export function Home({
 								dictation.cancel();
 								return;
 							}
-							if (e.key === "Enter" && !e.shiftKey) {
+							if (enterSubmits(e)) {
 								e.preventDefault();
 								void start();
 							}

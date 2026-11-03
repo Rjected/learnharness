@@ -383,7 +383,11 @@ describe("composeQuizMechanics (the segmented control's write)", () => {
 		assert.equal(free.tools?.explain, true);
 		const choice = composeQuizMechanics(before, "choice");
 		assert.equal(choice.tools?.explain, false);
-		for (const after of [free, choice]) {
+		assert.equal(free.tools?.quiz, false, "free recall alone is not mixed");
+		const mixed = composeQuizMechanics(before, "mixed");
+		assert.equal(mixed.tools?.explain, true);
+		assert.equal(mixed.tools?.quiz, true);
+		for (const after of [free, choice, mixed]) {
 			assert.equal(after.tools?.research, false, "the research toggle carries verbatim");
 			assert.deepEqual(after.prompts, before.prompts, "the prompts map carries verbatim");
 		}

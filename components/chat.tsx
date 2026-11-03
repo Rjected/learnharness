@@ -56,7 +56,7 @@ import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
-import { SessionMessageNavigation } from "@/components/session-navigation";
+import { SessionMessageNavigation, scrollSessionTarget } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
@@ -2005,7 +2005,7 @@ function DockOverlay({
 	 *  home and /chat/new carry, above the composer while slots are unset. */
 	setupCta?: React.ReactNode;
 }) {
-	const { isAtBottom, scrollToBottom, scrollRef } = useStickToBottomContext();
+	const { isAtBottom, scrollToBottom, scrollRef, stopScroll } = useStickToBottomContext();
 	// Render-fresh bottom state (flicker round): the arrival block below reads
 	// it DURING RENDER — the same value the after-paint effect used to read a
 	// frame too late. Assigned per render like the other refs below.
@@ -2133,13 +2133,20 @@ function DockOverlay({
 	const reserveRef = useRef(0);
 	const offer = useCallback((blockH: number) => {
 		const next = blockH + GRADIENT_H;
-		if (next <= reserveRef.current + 0.5 && pendingRef.current) return;
+		if (next <= reserveRef.current + 0.5 && pendingRef.current) {
+			// Keep the space, unless the learner sits so far above the bottom that
+			// the clamp cannot reach them ("Read above" lands screens up): then the
+			// give-back is safe, and keeping it leaves a dock-tall gap under the transcript.
+			const el = scrollRef.current;
+			const d = el ? el.scrollHeight - el.clientHeight - el.scrollTop : 0;
+			if (expandedRef.current || d - (reserveRef.current - next) < COLLAPSE_DIST) return;
+		}
 		// Stamp growth at the source, including child-only field resizes, so
 		// stick-to-bottom's catch-up is not mistaken for the learner leaving.
 		if (shouldStampGeometryMute(next, reserveRef.current, pendingRef.current)) geometryAtRef.current = Date.now();
 		reserveRef.current = next;
 		onReserve(next);
-	}, [onReserve]);
+	}, [onReserve, scrollRef]);
 
 	// The overlay must not paint over the scroller's scrollbar (owner, scroll
 	// round 2): the scroller reserves symmetric gutters (scrollbar-gutter:
@@ -2217,9 +2224,33 @@ function DockOverlay({
 		});
 	};
 	const expandAndReveal = () => {
+		pinnedFoldRef.current = false;
 		setRevealed(true); // the teach-check invitation was accepted (W5)
 		setExpanded(true);
 		void suppressFoldDuringReveal();
+	};
+	// "Read above" (phone round, 2026-10-29): fold to the bar and land the
+	// learner's last answer at the top — the teacher's reply follows it.
+	// NOT the last assistant message: one turn is one message spanning many
+	// steps, so its top is often screens above (verified live). The landing
+	// is far from the bottom, so the fold machine leaves it folded;
+	// scrolling back down (or the bar) re-expands as usual.
+	// A "Read above" fold is PINNED (owner, same round): reading down the
+	// teacher's reply reaches the bottom, and the at-bottom auto-expand
+	// popped the form back over it. Only the bar (or Enter) reopens it.
+	const pinnedFoldRef = useRef(false);
+	useEffect(() => {
+		pinnedFoldRef.current = false;
+	}, [pending?.toolCallId]);
+	const collapseToTeacher = () => {
+		pinnedFoldRef.current = true;
+		const el = scrollRef.current;
+		const target = el
+			? (Array.from(el.querySelectorAll<HTMLElement>('[data-testid="answered-card"]')).at(-1) ??
+				Array.from(el.querySelectorAll<HTMLElement>(".is-assistant")).at(-1))
+			: undefined;
+		if (el && target) scrollSessionTarget(target, el, { scrollRef, stopScroll });
+		setExpanded(false);
 	};
 	const expandAndRevealRef = useRef(expandAndReveal);
 	expandAndRevealRef.current = expandAndReveal;
@@ -2279,6 +2310,7 @@ function DockOverlay({
 				// Teach checks stay collapsed until the learner opens them (W5): the
 				// at-bottom auto-expand would pop the form over the teaching.
 				if (requiresRevealRef.current && !revealedRef.current) return;
+				if (pinnedFoldRef.current) return;
 				setExpanded(true);
 				void scrollToBottom();
 			}
@@ -2401,6 +2433,7 @@ function DockOverlay({
 									reveal={revealPending}
 									phase={phase}
 									onExpand={expandAndReveal}
+									onCollapse={collapseToTeacher}
 									onSubmit={onSubmitAnswer}
 									initialDraft={initialQuestionDraft}
 									onSaveDraft={onSaveQuestionDraft}
