@@ -284,7 +284,9 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			data-empty={initial.current.value.length === 0 ? "true" : "false"}
 			data-file-path-default={defaultDropTarget ? "" : undefined}
 			data-placeholder={placeholder}
-			className={cn("block w-full min-w-0 outline-none data-[empty=true]:before:pointer-events-none data-[empty=true]:before:text-muted-foreground data-[empty=true]:before:content-[attr(data-placeholder)]", singleLine ? "whitespace-pre break-normal overflow-x-auto overflow-y-hidden" : "whitespace-pre-wrap break-words overflow-y-auto", className)}
+			// The placeholder is out of flow (absolute, at its static spot): an inline ::before puts the
+			// browser's caret after its text in an empty contenteditable. min-h-[1lh] keeps the empty line.
+			className={cn("relative block min-h-[1lh] w-full min-w-0 outline-none data-[empty=true]:before:pointer-events-none data-[empty=true]:before:absolute data-[empty=true]:before:text-muted-foreground data-[empty=true]:before:content-[attr(data-placeholder)]", singleLine ? "whitespace-pre break-normal overflow-x-auto overflow-y-hidden" : "whitespace-pre-wrap break-words overflow-y-auto", className)}
 			onKeyDown={(event) => {
 				if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) { event.stopPropagation(); return; }
 				onKeyDown?.(event);
