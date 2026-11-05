@@ -84,3 +84,9 @@ export function ankiTools({ port, language }: AnkiToolsContext): Record<string, 
 		},
 	};
 }
+
+/** The read-only Anki tools, for phases that only assess (the probe). */
+export function ankiReadTools(ctx: AnkiToolsContext): Record<string, AgentTool<any>> {
+	const { anki_lookup, anki_cards } = ankiTools(ctx);
+	return { anki_lookup: anki_lookup!, anki_cards: anki_cards! };
+}

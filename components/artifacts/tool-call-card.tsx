@@ -42,6 +42,9 @@ function headlineArg(tool: string, input: unknown): string {
 	if (tool === "anki_lookup" && Array.isArray(inp.terms)) {
 		return inp.terms.length ? inp.terms.filter((t) => typeof t === "string").join(" ") : "overview";
 	}
+	if (tool === "anki_cards" && typeof inp.which === "string") {
+		return [inp.which, inp.deck].filter((s) => typeof s === "string").join(" · ");
+	}
 	return "";
 }
 

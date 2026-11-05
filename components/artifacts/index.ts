@@ -53,5 +53,6 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	list_propositions: ToolCallCard,
 	// The Anki pair: lookup is a quiet tool line; proposals carry Add buttons.
 	anki_lookup: ToolCallCard,
+	anki_cards: ToolCallCard,
 	anki_propose_cards: AnkiCardsCard,
 };

@@ -162,7 +162,7 @@ export function rewriteCardHtml(html: string): string {
 /** Learning-step cards Anki would show early when nothing else is left (its default learn-ahead). */
 export const ANKI_LEARN_AHEAD_SECONDS = 20 * 60;
 
-// ─── Teacher ↔ Anki (anki_lookup / anki_propose_cards) ─────────────────────
+// ─── Teacher ↔ Anki (anki_lookup / anki_cards / anki_propose_cards) ─────────────────────
 
 /** What the agent layer may ask of Anki — injected by the server (the agent never imports it). */
 export interface AnkiToolPort {

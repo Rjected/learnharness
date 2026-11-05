@@ -172,6 +172,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
 	plan_init: "Drawing up the plan…",
 	probe_done: "Concluding the assessment…",
 	anki_lookup: "Checking your Anki cards…",
+	anki_cards: "Listing your Anki cards…",
 	anki_propose_cards: "Writing flashcards…",
 };
 

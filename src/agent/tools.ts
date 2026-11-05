@@ -24,7 +24,7 @@ import { lsTool } from "./tools/ls.ts";
 import { findTool } from "./tools/find.ts";
 import { grepTool } from "./tools/grep.ts";
 import { healToolRecord } from "./tools/heal.ts";
-import { ankiTools, type AnkiToolsContext } from "./tools/anki.ts";
+import { ankiReadTools, ankiTools, type AnkiToolsContext } from "./tools/anki.ts";
 import type { GraphStore } from "../core/ports.ts";
 
 export { jobTools };
@@ -277,7 +277,7 @@ export interface ProberToolContext extends ProbeDoneContext {
 	 *  master switch AND the agent.graphTools toggle (settings-resolution).
 	 *  Absent = the gate is closed, no map tools (tests drive this seam). */
 	graphStore?: GraphStore;
-	/** The learner's Anki collection, while a language is studied: present = anki_lookup is registered. */
+	/** The learner's Anki collection, while a language is studied: present = anki_lookup and anki_cards are registered. */
 	anki?: AnkiToolsContext;
 }
 
@@ -333,7 +333,7 @@ export function createProberTools(
 				ls: lsTool,
 				find: findTool,
 				grep: grepTool,
-				...(ctx.anki ? { anki_lookup: ankiTools(ctx.anki).anki_lookup! } : {}),
+				...(ctx.anki ? ankiReadTools(ctx.anki) : {}),
 				// Job dispatch in the probe phase (owner ruling, 2026-09-20):
 				// research + pdf are ALWAYS available in every phase — the
 				// prober can verify facts or read learner PDFs while assessing.
