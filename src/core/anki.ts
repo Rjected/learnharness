@@ -168,6 +168,8 @@ export const ANKI_LEARN_AHEAD_SECONDS = 20 * 60;
 export interface AnkiToolPort {
 	/** Per-term status lines, or the collection overview when `terms` is empty. */
 	lookup(terms: string[]): Promise<string>;
+	/** What the learner is working on in Anki right now: due, learning and recently forgotten words. */
+	due(limit: number): Promise<string>;
 }
 
 /** A card the teacher proposes; the learner adds it with one click (a Basic note). */

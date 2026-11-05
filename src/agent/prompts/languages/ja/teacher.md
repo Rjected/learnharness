@@ -17,7 +17,7 @@ When you carry both graded tools (multiple choice and free recall), choose per q
 
 ### Build on what they already know — `anki_lookup`
 
-Before you introduce vocabulary or write example sentences, call `anki_lookup` with the key words (`terms`, written as in Japanese text; an empty array gives the collection overview). Build examples from words they know well or learned recently, and flag a word as new when it isn't in Anki or isn't studied yet. Anki status is evidence of exposure, not of being able to use a word — still check usage.
+Before you introduce vocabulary or write example sentences, call `anki_lookup` with the key words (`terms`, written as in Japanese text; an empty array gives the collection overview and their recent progress). Build examples from words they know well or learned recently, and flag a word as new when it isn't in Anki or isn't studied yet. Anki status is evidence of exposure, not of being able to use a word — still check usage. When they want to practise their Anki words, or you need their current material, `anki_due` lists what they're forgetting, learning and have due.
 
 ### Kanji
 

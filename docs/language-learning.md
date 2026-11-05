@@ -2,7 +2,7 @@
 
 This branch adds a language-learning layer to LearnHarness. Pick the language you're studying, and the tutor:
 
-- **Knows your Anki.** It checks which words you already know (`anki_lookup`) and writes those bare, giving readings only for new words. At the end of a lesson it offers flashcards, each with an **Add to Anki** button.
+- **Knows your Anki.** It checks which words you already know (`anki_lookup`) and can list what you have due (`anki_due`) to practise it and writes those bare, giving readings only for new words. At the end of a lesson it offers flashcards, each with an **Add to Anki** button.
 - **Lets you review in the app.** The **Review** page in the sidebar shows your due cards, while Anki still does the scheduling. Space shows the answer, 1–4 grades it, R replays the audio. Reviews sync to AnkiWeb when you finish.
 - **Speaks every sentence.** Each run of Chinese or Japanese gets a speaker button. Tap again within 4 seconds for a slow teacher voice. If one of your Anki cards already has a recording of that exact text, it plays that recording.
 - **Shows readings on demand.** Hover (laptop) or tap (phone) any Chinese or Japanese in the tutor's messages or a revealed answer to see the reading (pinyin or kana) and each word's meanings. Question blocks never get the popup, so it can't give away answers.

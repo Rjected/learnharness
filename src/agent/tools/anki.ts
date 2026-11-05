@@ -4,6 +4,7 @@
  * what the learner already reviews, and hand new material back to it.
  *
  *   anki_lookup         read-only — which words/characters the learner knows
+ *   anki_due            read-only — the words they're working on right now
  *   anki_propose_cards  no side effect — renders cards with an "Add to Anki"
  *                       button each; the LEARNER decides what gets added
  */
@@ -26,6 +27,9 @@ export function ankiTools({ port, language }: AnkiToolsContext): Record<string, 
 			description: `${language.label} words or short phrases, written as in ${language.label} text. Empty array = an overview of the whole collection.`,
 		}),
 	});
+	const dueInput = Type.Object({
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 60, description: "Most words to list (default 30)." })),
+	});
 	const proposeInput = Type.Object({
 		cards: Type.Array(
 			Type.Object({
@@ -46,9 +50,19 @@ export function ankiTools({ port, language }: AnkiToolsContext): Record<string, 
 			label: "anki_lookup",
 			description:
 				"Check the learner's Anki collection (their daily flashcard reviews). For each term: whether it is in Anki and how well it is known " +
-				"(new / learning / young / mature with the review interval). Pass an empty array for an overview of every deck. Read-only.",
+				"(new / learning / young / mature with the review interval). Pass an empty array for an overview: every deck's counts, due cards " +
+				"and settings, plus their recent progress (days studied, streak, cards per day, how much they remember). Read-only.",
 			parameters: lookupInput,
 			execute: serverExecute("anki_lookup", lookupInput, async ({ terms }): Promise<string> => port.lookup(terms)),
+		},
+		anki_due: {
+			name: "anki_due",
+			label: "anki_due",
+			description:
+				"List the words the learner is working on in Anki: forgotten this week, in learning, then due today (most overdue first), " +
+				"each with its state and deck. Use it to practise or build a lesson on their current cards. Read-only.",
+			parameters: dueInput,
+			execute: serverExecute("anki_due", dueInput, async ({ limit }): Promise<string> => port.due(limit ?? 30)),
 		},
 		anki_propose_cards: {
 			name: "anki_propose_cards",

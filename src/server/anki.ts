@@ -290,7 +290,7 @@ export async function ankiMediaResponse(name: string, range: string | null): Pro
 // ─── Reusing the learner's own Anki audio ──────────────────────────────────
 
 /** CJK text: the runs the speaker buttons play (Chinese, Japanese). */
-const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+export const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const plain = (v: string) =>
 	v
 		.replace(/\[sound:[^\]]+\]/g, "")
