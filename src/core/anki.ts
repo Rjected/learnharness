@@ -168,8 +168,28 @@ export const ANKI_LEARN_AHEAD_SECONDS = 20 * 60;
 export interface AnkiToolPort {
 	/** Per-term status lines, or the collection overview when `terms` is empty. */
 	lookup(terms: string[]): Promise<string>;
-	/** What the learner is working on in Anki right now: due, learning and recently forgotten words. */
-	due(limit: number): Promise<string>;
+	/** One slice of the learner's cards, word by word (see AnkiCardQuery). */
+	cards(query: AnkiCardQuery): Promise<string>;
+}
+
+/** Which of the learner's cards to list. */
+export const ANKI_CARD_SETS = {
+	due: "due today (most overdue first)",
+	learning: "in their first learning steps, or relearning after a lapse",
+	forgotten: "failed at least once in the last `days` days (default 7)",
+	due_soon: "reviews coming due within `days` days (default 3), soonest first",
+	next_new: "the new cards Anki will introduce next, labelled with the day (1 = today)",
+	known: "words they know, longest review interval first — material for sentences",
+	struggling: "forgotten 3+ times, most forgotten first",
+} as const;
+export type AnkiCardSet = keyof typeof ANKI_CARD_SETS;
+
+export interface AnkiCardQuery {
+	which: AnkiCardSet;
+	/** Only decks whose name contains this (case-insensitive). */
+	deck?: string;
+	days?: number;
+	limit?: number;
 }
 
 /** A card the teacher proposes; the learner adds it with one click (a Basic note). */

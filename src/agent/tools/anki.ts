@@ -4,14 +4,14 @@
  * what the learner already reviews, and hand new material back to it.
  *
  *   anki_lookup         read-only — which words/characters the learner knows
- *   anki_due            read-only — the words they're working on right now
+ *   anki_cards          read-only — one slice of their cards: due, new next, known…
  *   anki_propose_cards  no side effect — renders cards with an "Add to Anki"
  *                       button each; the LEARNER decides what gets added
  */
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
-import type { AnkiToolPort } from "../../core/anki.ts";
+import { ANKI_CARD_SETS, type AnkiCardSet, type AnkiToolPort } from "../../core/anki.ts";
 import type { LanguageProfile } from "../../core/languages.ts";
 
 /** What the Anki tools need: the learner's collection and the language it's for. */
@@ -27,8 +27,14 @@ export function ankiTools({ port, language }: AnkiToolsContext): Record<string, 
 			description: `${language.label} words or short phrases, written as in ${language.label} text. Empty array = an overview of the whole collection.`,
 		}),
 	});
-	const dueInput = Type.Object({
-		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 60, description: "Most words to list (default 30)." })),
+	const cardsInput = Type.Object({
+		which: Type.Union(
+			Object.keys(ANKI_CARD_SETS).map((k) => Type.Literal(k as AnkiCardSet)),
+			{ description: Object.entries(ANKI_CARD_SETS).map(([k, v]) => `${k} = ${v}`).join("; ") },
+		),
+		deck: Type.Optional(Type.String({ minLength: 1, description: "Only decks whose name contains this, e.g. \"Refold\" or \"speaking\"." })),
+		days: Type.Optional(Type.Integer({ minimum: 1, maximum: 60, description: "Window for forgotten and due_soon." })),
+		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, description: "Most words to list (default 30)." })),
 	});
 	const proposeInput = Type.Object({
 		cards: Type.Array(
@@ -55,14 +61,15 @@ export function ankiTools({ port, language }: AnkiToolsContext): Record<string, 
 			parameters: lookupInput,
 			execute: serverExecute("anki_lookup", lookupInput, async ({ terms }): Promise<string> => port.lookup(terms)),
 		},
-		anki_due: {
-			name: "anki_due",
-			label: "anki_due",
+		anki_cards: {
+			name: "anki_cards",
+			label: "anki_cards",
 			description:
-				"List the words the learner is working on in Anki: forgotten this week, in learning, then due today (most overdue first), " +
-				"each with its state and deck. Use it to practise or build a lesson on their current cards. Read-only.",
-			parameters: dueInput,
-			execute: serverExecute("anki_due", dueInput, async ({ limit }): Promise<string> => port.due(limit ?? 30)),
+				"List one slice of the learner's Anki cards, word by word, each with its reading, meaning, an example sentence when the card " +
+				"has one, its state (interval, times forgotten) and deck. Use it to plan practice around their reviews: pre-teach next_new " +
+				"and due words in sentences built from known ones, so the Anki session that follows is recall, not first contact. Read-only.",
+			parameters: cardsInput,
+			execute: serverExecute("anki_cards", cardsInput, async (query): Promise<string> => port.cards(query)),
 		},
 		anki_propose_cards: {
 			name: "anki_propose_cards",

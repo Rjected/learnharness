@@ -1,14 +1,14 @@
 /**
  * The server half of the teacher's Anki tools:
  *   - ankiLookup: what the learner already knows, from their real review state
- *   - ankiDue: what they're working on — forgotten, learning and due words
+ *   - ankiCards: one slice of their cards (due, new next, known…) with readings, meanings, examples
  *   - ankiAddProposal: one proposed card → a Basic note in the studied
  *     language's deck, with audio (their existing recording when Anki has
  *     one, else Gemini TTS, stored into Anki's media folder)
  */
 
 import crypto from "node:crypto";
-import { ankiAddDeck, type AnkiAddResult, type AnkiCardProposal, type AnkiToolPort } from "../core/anki.ts";
+import { ankiAddDeck, ANKI_CARD_SETS, type AnkiAddResult, type AnkiCardProposal, type AnkiCardQuery, type AnkiCardSet, type AnkiToolPort } from "../core/anki.ts";
 import { LANGUAGES } from "../core/languages.ts";
 import { ankiAudioFor, ankiInvoke, AnkiOfflineError, CJK, readAnkiConfig } from "./anki.ts";
 import { studyProfile } from "./language.ts";
@@ -129,77 +129,119 @@ export async function ankiLookup(terms: string[]): Promise<string> {
 	}
 }
 
-interface DueCard extends CardState {
+interface ListedCard extends CardState {
 	due: number;
 	lapses: number;
 	fields: Record<string, { value: string; order: number }>;
 }
 
 const plain = (html: string) =>
-	html.replace(/\[sound:[^\]]*\]/g, "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+	html.replace(/\[sound:[^\]]*\]/g, "").replace(/<br\s*\/?>|<\/(div|p|li)>/gi, "; ").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+const short = (s: string, max = 60) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 /**
  * What a card is about, read from its note: the first field in the studied script, plus the first
- * reading-like and meaning-like fields by name (Pinyin, Reading…; Meaning, Back…), shortened.
+ * reading-, meaning- and example-like fields by name (Pinyin; Meaning, Back; Sentence, Examples).
+ * Undefined when no field is in the studied script (not a language card).
  */
-function describeNote(fields: DueCard["fields"]): string {
+function describeNote(fields: ListedCard["fields"]): { word: string; line: string } | undefined {
 	const ordered = Object.entries(fields)
 		.sort(([, a], [, b]) => a.order - b.order)
 		.map(([name, f]) => [name, plain(f.value)] as const)
 		.filter(([, v]) => v);
 	const word = ordered.find(([, v]) => CJK.test(v))?.[1];
-	if (!word) return "";
-	const pick = (re: RegExp) => ordered.find(([name, v]) => re.test(name) && v !== word)?.[1];
+	if (!word) return undefined;
+	const pick = (re: RegExp, cjk = false) => ordered.find(([name, v]) => re.test(name) && v !== word && (!cjk || CJK.test(v)))?.[1];
 	const reading = pick(/pinyin|reading|kana|furigana/i);
 	const meaning = pick(/meaning|english|definition|back|prompt/i);
-	const short = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}…` : s);
-	return [word, reading && `(${short(reading)})`, meaning && `“${short(meaning)}”`].filter(Boolean).join(" ");
+	const example = pick(/sentence|example/i, true);
+	const line = [word, reading && `(${short(reading)})`, meaning && `“${short(meaning)}”`, example && `e.g. ${short(example, 80)}`]
+		.filter(Boolean)
+		.join(" ");
+	return { word, line };
+}
+
+const SET_QUERY: Record<AnkiCardSet, (days: number) => string> = {
+	due: () => "is:due is:review -is:learn",
+	learning: () => "is:learn",
+	forgotten: (days) => `rated:${days}:1`,
+	due_soon: (days) => `is:review -is:learn prop:due>0 prop:due<=${days}`,
+	next_new: () => "is:new -is:buried",
+	known: () => "is:review -is:learn prop:ivl>=7",
+	struggling: () => "prop:lapses>=3",
+};
+const SET_ORDER: Record<AnkiCardSet, (a: ListedCard, b: ListedCard) => number> = {
+	due: (a, b) => a.due - b.due,
+	learning: (a, b) => b.lapses - a.lapses,
+	forgotten: (a, b) => b.lapses - a.lapses,
+	due_soon: (a, b) => a.due - b.due,
+	next_new: (a, b) => a.due - b.due, // a new card's due is its queue position; see byIntroductionDay
+	known: (a, b) => b.interval - a.interval,
+	struggling: (a, b) => b.lapses - a.lapses,
+};
+
+function stateOf(c: ListedCard): string {
+	const state =
+		c.type === 0 ? "new" : c.type === 1 ? "learning" : c.type === 3 ? "relearning" : `${c.interval >= 21 ? "mature" : "young"}, interval ${c.interval}d`;
+	return `${state}${c.lapses ? `, forgotten ${c.lapses}×` : ""}`;
 }
 
 /**
- * The words the learner is working on: forgotten in the last week, in learning, then due reviews,
- * most overdue first. One line per word (a word with several cards, e.g. reading and speaking, counts once).
+ * New cards in the order Anki introduces them: each deck gives its own new-cards-per-day, day after
+ * day; paused decks (0/day) give none. Labels each card with the day it should come up.
  */
-export async function ankiDue(limit: number): Promise<string> {
+async function byIntroductionDay(cards: ListedCard[]): Promise<{ card: ListedCard; day: number }[]> {
+	const decks = [...new Set(cards.map((c) => c.deckName))];
+	const configs = await ankiInvoke<{ result: { new: { perDay: number } } | false }[]>("multi", {
+		actions: decks.map((deck) => ({ action: "getDeckConfig", version: 6, params: { deck } })),
+	});
+	const queues = decks
+		.map((deck, i) => ({ perDay: configs[i]!.result ? configs[i]!.result.new.perDay : 0, cards: cards.filter((c) => c.deckName === deck) }))
+		.filter((q) => q.perDay > 0);
+	const out: { card: ListedCard; day: number }[] = [];
+	for (let day = 1; queues.some((q) => q.cards.length); day++) {
+		for (const q of queues) for (const card of q.cards.splice(0, q.perDay)) out.push({ card, day });
+	}
+	return out;
+}
+
+/** One slice of the learner's cards, one line per word (sibling cards of a word count once). */
+export async function ankiCards({ which, deck, days, limit = 30 }: AnkiCardQuery): Promise<string> {
 	try {
-		// The decks picked for the Review page, else everything.
+		const span = Math.max(1, Math.round(days ?? (which === "due_soon" ? 3 : 7)));
+		// The decks picked for the Review page, else everything; then the deck filter.
 		const scope = readAnkiConfig().decks.map((d) => `"deck:${escapeSearch(d)}"`).join(" OR ") || "-deck:Default";
-		const [lapsed, learning, due] = await ankiInvoke<{ result: number[] }[]>("multi", {
-			actions: ["rated:7:1", "is:learn", "is:due is:review -is:learn"].map((q) => ({
-				action: "findCards",
-				version: 6,
-				params: { query: `(${scope}) -is:suspended ${q}` },
-			})),
-		});
-		const ids = [...new Set([...lapsed!.result, ...learning!.result, ...due!.result])];
-		if (ids.length === 0) return "Nothing is due in Anki right now, and nothing was forgotten this week.";
-		const cards = await ankiInvoke<DueCard[]>("cardsInfo", {
-			cards: ids,
-			fields: ["cardId", "interval", "type", "queue", "deckName", "due", "lapses", "fields"],
-		});
-		const lapsedIds = new Set(lapsed!.result);
-		const rank = (c: DueCard) => (lapsedIds.has(c.cardId) ? 0 : c.type === 1 || c.type === 3 ? 1 : 2);
-		cards.sort((a, b) => rank(a) - rank(b) || a.due - b.due);
+		const deckFilter = deck ? ` "deck:*${escapeSearch(deck)}*"` : "";
+		const ids = await ankiInvoke<number[]>("findCards", { query: `(${scope})${deckFilter} -is:suspended ${SET_QUERY[which](span)}` });
+		const cards = ids.length
+			? await ankiInvoke<ListedCard[]>("cardsInfo", {
+					cards: ids,
+					fields: ["cardId", "interval", "type", "queue", "deckName", "due", "lapses", "fields"],
+				})
+			: [];
+		cards.sort(SET_ORDER[which]);
+		const ordered = which === "next_new" ? await byIntroductionDay(cards) : cards.map((card) => ({ card, day: 0 }));
 		const seen = new Set<string>();
 		const lines: string[] = [];
-		for (const c of cards) {
-			const word = describeNote(c.fields);
-			if (!word || seen.has(word)) continue;
-			seen.add(word);
-			if (lines.length < limit) {
-				const state = rank(c) === 0 ? "forgotten this week" : rank(c) === 1 ? "learning" : `due (interval ${c.interval}d)`;
-				lines.push(`- ${word}: ${state}${c.lapses > 1 ? `, forgotten ${c.lapses} times` : ""} — ${c.deckName.split("::").pop()}`);
-			}
+		for (const { card: c, day } of ordered) {
+			const note = describeNote(c.fields);
+			if (!note || seen.has(note.word)) continue;
+			seen.add(note.word);
+			const when = day ? `day ${day}` : stateOf(c);
+			if (lines.length < limit) lines.push(`- ${note.line} — ${when} — ${c.deckName.split("::").pop()}`);
 		}
+		const set = ANKI_CARD_SETS[which].replace("`days` days", `${span} days`).replace(/ \(default \d+\)/, "");
+		const title = `${seen.size} word(s) ${set}${deck ? ` in decks matching “${deck}”` : ""}`;
+		if (seen.size === 0) return `${title}.`;
 		const more = seen.size - lines.length;
-		return `${lines.join("\n")}${more > 0 ? `\n…and ${more} more.` : ""}\nPractising these here doesn't grade them in Anki — they still review there.`;
+		return [`${title}:`, ...lines, ...(more > 0 ? [`…and ${more} more (raise limit, or narrow by deck).`] : [])].join("\n");
 	} catch (err) {
-		if (err instanceof AnkiOfflineError) return "Anki is closed on the learner's laptop, so their due cards can't be checked right now.";
+		if (err instanceof AnkiOfflineError) return "Anki is closed on the learner's laptop, so their cards can't be listed right now.";
 		throw err;
 	}
 }
 
-export const ankiToolPort: AnkiToolPort = { lookup: ankiLookup, due: ankiDue };
+export const ankiToolPort: AnkiToolPort = { lookup: ankiLookup, cards: ankiCards };
 
 /** Audio for a card: an existing Anki recording of the same text, else a stored TTS clip. */
 async function audioTag(text: string, lang: string, chatId: string | null): Promise<string> {

@@ -49,7 +49,7 @@ describe("the studied language", () => {
 	});
 
 	it("describes the Anki card fields in the studied language", () => {
-		const tools = ankiTools({ port: { lookup: async () => "", due: async () => "" }, language: LANGUAGES.ja });
+		const tools = ankiTools({ port: { lookup: async () => "", cards: async () => "" }, language: LANGUAGES.ja });
 		const schema = JSON.stringify(tools.anki_propose_cards!.parameters);
 		assert.match(schema, /hiragana/);
 		assert.doesNotMatch(schema, /pinyin|Chinese/);
