@@ -6,8 +6,10 @@
  *
  * The queue mirrors Anki's v3 order closely enough for daily reviews:
  * learning cards that are due, then reviews (capped by each deck's review
- * limit), then new cards (capped by its new-card limit), and finally a
- * learning card due within the learn-ahead window when nothing else is left.
+ * limit) and new cards (capped by its new-card limit) mixed in random order
+ * — Anki set to random review and new-card order, new cards mixed with
+ * reviews — and finally a learning card due within the learn-ahead window
+ * when nothing else is left.
  */
 
 import fs from "node:fs";
@@ -220,10 +222,10 @@ export async function ankiNext(session: string | null = null): Promise<AnkiNextR
 		const queue = await buildQueue(config, session, now);
 		const counts = countsOf(queue);
 		const waiting = queue.learnWaiting[0];
+		const mixed = [...queue.review, ...queue.fresh];
 		const next =
 			queue.learnReady[0] ??
-			queue.review[0] ??
-			queue.fresh[0] ??
+			mixed[Math.floor(Math.random() * mixed.length)] ??
 			(waiting && waiting.due - now <= ANKI_LEARN_AHEAD_SECONDS ? waiting.id : undefined);
 		if (next !== undefined) return { state: "card", card: await ankiCardView(next, config), counts };
 		if (waiting) return { state: "waiting", dueAt: waiting.due, counts };
