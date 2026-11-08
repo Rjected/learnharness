@@ -177,7 +177,7 @@ export function ReviewSession() {
 				<Button variant="ghost" size="icon-sm" aria-label="Choose decks" onClick={() => setShowDecks((v) => !v)} className="lh-no-drag">
 					<SlidersHorizontalIcon />
 				</Button>
-				<Button variant="ghost" size="icon-sm" aria-label="Replay audio" onClick={replay} disabled={!card} className="lh-no-drag">
+				<Button variant="ghost" size="icon-sm" aria-label="Replay audio" title="Replay audio (R)" onClick={replay} disabled={!card} className="lh-no-drag">
 					<Volume2Icon />
 				</Button>
 			</header>
@@ -236,10 +236,11 @@ export function ReviewSession() {
 										disabled={busy}
 										onClick={() => void grade(ease)}
 										className={cn(
-											"flex flex-col items-center rounded-md border py-2 text-sm transition-colors disabled:opacity-50",
+											"relative flex flex-col items-center rounded-md border py-2 text-sm transition-colors disabled:opacity-50",
 											EASE_STYLE[ease],
 										)}
 									>
+										<kbd className="absolute top-1 left-1.5 font-mono text-[10px] text-muted-foreground/70 pointer-coarse:hidden">{ease}</kbd>
 										<span className="text-xs text-muted-foreground">{card.nextReviews[ease - 1]?.replace(/[⁨⁩]/g, "")}</span>
 										<span>{ANKI_EASE_LABELS[ease]}</span>
 									</button>
@@ -248,6 +249,7 @@ export function ReviewSession() {
 						) : (
 							<Button className="h-12 w-full" onClick={reveal}>
 								Show answer
+								<kbd className="rounded border border-current/30 px-1.5 font-mono text-xs opacity-70 pointer-coarse:hidden">Space</kbd>
 							</Button>
 						)}
 					</div>
