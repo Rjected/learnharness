@@ -8,18 +8,37 @@
 
 // ─── Config (data/anki.json) ───────────────────────────────────────────────
 
+/**
+ * What a deck is for in LearnHarness. Daily decks make up the main Review
+ * session, the sidebar count and the teacher's default Anki scope; each
+ * separate deck is its own session, never mixed into the daily one; a paused
+ * deck's cards are suspended in Anki until it is resumed; off decks are not
+ * used here at all.
+ */
+export type AnkiDeckRole = "daily" | "separate" | "paused" | "off";
+
+export const ANKI_DECK_ROLES: Record<AnkiDeckRole, string> = {
+	daily: "Daily",
+	separate: "Separate",
+	paused: "Paused",
+	off: "Off",
+};
+
 export interface AnkiConfig {
 	/** AnkiConnect endpoint on the laptop. */
 	url: string;
-	/** Decks to review (full names, "Parent::Child"). Empty = every deck with cards. */
-	decks: string[];
+	/** Each deck's role (full names, "Parent::Child"); a deck without one follows its parent (ankiDeckRole). */
+	roles: Record<string, AnkiDeckRole>;
+	/** The cards LearnHarness suspended to pause decks — exactly the ones resuming unsuspends. Server-owned. */
+	pausedCards: number[];
 	/** Deck that teacher-created cards go into; "" = "<Language>::LearnHarness" (ankiAddDeck). */
 	addDeck: string;
 }
 
 export const DEFAULT_ANKI_CONFIG: AnkiConfig = {
 	url: "http://127.0.0.1:8765",
-	decks: [],
+	roles: {},
+	pausedCards: [],
 	addDeck: "",
 };
 
@@ -31,11 +50,71 @@ export function ankiAddDeck(config: AnkiConfig, languageLabel: string): string {
 export function sanitizeAnkiConfig(raw: unknown): AnkiConfig {
 	const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
 	const url = typeof r.url === "string" && /^https?:\/\//.test(r.url.trim()) ? r.url.trim() : DEFAULT_ANKI_CONFIG.url;
-	const decks = Array.isArray(r.decks)
-		? [...new Set(r.decks.filter((d): d is string => typeof d === "string" && d.trim() !== "").map((d) => d.trim()))]
-		: DEFAULT_ANKI_CONFIG.decks;
+	const roles: Record<string, AnkiDeckRole> = {};
+	// Before roles, the config listed the decks to review: those are the daily ones.
+	if (Array.isArray(r.decks)) for (const d of r.decks) if (typeof d === "string" && d.trim()) roles[d.trim()] = "daily";
+	if (r.roles && typeof r.roles === "object") {
+		for (const [d, role] of Object.entries(r.roles)) {
+			if (d.trim() && typeof role === "string" && role in ANKI_DECK_ROLES) roles[d.trim()] = role as AnkiDeckRole;
+		}
+	}
+	const pausedCards = Array.isArray(r.pausedCards)
+		? [...new Set(r.pausedCards.filter((id): id is number => Number.isSafeInteger(id) && id > 0))]
+		: [];
 	const addDeck = typeof r.addDeck === "string" ? r.addDeck.trim() : DEFAULT_ANKI_CONFIG.addDeck;
-	return { url, decks, addDeck };
+	return { url, roles, pausedCards, addDeck };
+}
+
+/** The deck nearest `deck` with a role of its own: itself, then its parents. */
+function roleHolder(config: Pick<AnkiConfig, "roles">, deck: string): string | undefined {
+	for (const parts = deck.split("::"); parts.length; parts.pop()) {
+		const name = parts.join("::");
+		if (config.roles[name]) return name;
+	}
+	return undefined;
+}
+
+/**
+ * A deck's role: its own, else its nearest parent's. With none up the tree
+ * it is daily until some deck is made daily, so a fresh config reviews
+ * everything (as the old "no decks ticked" did).
+ */
+export function ankiDeckRole(config: Pick<AnkiConfig, "roles">, deck: string): AnkiDeckRole {
+	const holder = roleHolder(config, deck);
+	if (holder) return config.roles[holder]!;
+	return Object.values(config.roles).includes("daily") ? "off" : "daily";
+}
+
+/** The Review session a deck's cards belong to: null = daily, a deck name = that separate deck's, undefined = none. */
+export function ankiSessionOf(config: Pick<AnkiConfig, "roles">, deck: string): string | null | undefined {
+	const role = ankiDeckRole(config, deck);
+	if (role === "daily") return null;
+	if (role === "separate") return roleHolder(config, deck);
+	return undefined;
+}
+
+/** The separate decks — one Review session each — in name order. */
+export function ankiSeparateDecks(config: Pick<AnkiConfig, "roles">): string[] {
+	return Object.keys(config.roles)
+		.filter((d) => config.roles[d] === "separate")
+		.sort();
+}
+
+/**
+ * A short name for a deck: its last part, minus a " · "-separated lead it
+ * shares with a sibling ("Chinese Characters · HSK Level A (800) · radicals"
+ * next to "… · speaking" → "radicals").
+ */
+export function ankiDeckLabel(deck: string, all: readonly string[]): string {
+	const parentOf = (d: string) => d.split("::").slice(0, -1).join("::");
+	const name = deck.split("::").pop()!;
+	const siblings = all.filter((d) => d !== deck && parentOf(d) === parentOf(deck)).map((d) => d.split("::").pop()!);
+	const parts = name.split(" · ");
+	for (let k = parts.length - 1; k > 0; k--) {
+		const lead = `${parts.slice(0, k).join(" · ")} · `;
+		if (siblings.some((s) => s.startsWith(lead))) return parts.slice(k).join(" · ");
+	}
+	return name;
 }
 
 // ─── Wire shapes (server → Review page) ────────────────────────────────────
@@ -61,6 +140,13 @@ export interface AnkiQueueCounts {
 	learning: number;
 	review: number;
 	new: number;
+}
+
+/** One Review session for the session chips: null deck = the daily one. */
+export interface AnkiSession {
+	deck: string | null;
+	label: string;
+	counts: AnkiQueueCounts;
 }
 
 export type AnkiNextResponse =

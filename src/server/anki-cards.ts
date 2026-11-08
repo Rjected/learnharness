@@ -8,9 +8,9 @@
  */
 
 import crypto from "node:crypto";
-import { ankiAddDeck, ANKI_CARD_SETS, type AnkiAddResult, type AnkiCardProposal, type AnkiCardQuery, type AnkiCardSet, type AnkiToolPort } from "../core/anki.ts";
+import { ankiAddDeck, ankiDeckRole, ankiSessionOf, ANKI_CARD_SETS, type AnkiAddResult, type AnkiCardProposal, type AnkiCardQuery, type AnkiCardSet, type AnkiToolPort } from "../core/anki.ts";
 import { LANGUAGES } from "../core/languages.ts";
-import { ankiAudioFor, ankiInvoke, AnkiOfflineError, CJK, readAnkiConfig } from "./anki.ts";
+import { ankiAudioFor, ankiInvoke, AnkiOfflineError, CJK, decksQuery, readAnkiConfig } from "./anki.ts";
 import { studyProfile } from "./language.ts";
 import { ttsAudio } from "./tts.ts";
 
@@ -48,6 +48,7 @@ function ankiDay(back: number): string {
 }
 
 async function overview(): Promise<string> {
+	const config = readAnkiConfig();
 	const decks = (await ankiInvoke<string[]>("deckNames")).filter((d) => d !== "Default");
 	const own = (d: string) => `"deck:${escapeSearch(d)}" -"deck:${escapeSearch(d)}::*"`;
 	const deckQueries = ["is:new", "is:learn", "is:review prop:ivl<21", "is:review prop:ivl>=21", "is:due -is:suspended"];
@@ -67,7 +68,7 @@ async function overview(): Promise<string> {
 		if (n! + l! + y! + m! === 0) return [];
 		const conf = results[i * stride + deckQueries.length]!.result as { new: { perDay: number }; desiredRetention: number } | false;
 		const settings = conf ? `; ${conf.new.perDay} new/day, target retention ${Math.round(conf.desiredRetention * 100)}%` : "";
-		return [`- ${d}: ${m} mature, ${y} young, ${l} learning, ${n} not yet studied; ${due} due now${settings}`];
+		return [`- ${d} [${ankiDeckRole(config, d)}]: ${m} mature, ${y} young, ${l} learning, ${n} not yet studied; ${due} due now${settings}`];
 	});
 
 	const base = decks.length * stride;
@@ -86,7 +87,7 @@ async function overview(): Promise<string> {
 			.join(", ")}.`,
 	];
 	return [
-		"The learner's Anki collection (mature = review interval 21+ days):",
+		"The learner's Anki collection (mature = review interval 21+ days). Each deck's role is in brackets — daily: their main review; separate: practised only in its own sessions; paused: suspended in Anki; off: not used in LearnHarness.",
 		...lines,
 		"",
 		"Progress:",
@@ -209,10 +210,16 @@ async function byIntroductionDay(cards: ListedCard[]): Promise<{ card: ListedCar
 export async function ankiCards({ which, deck, days, limit = 30 }: AnkiCardQuery): Promise<string> {
 	try {
 		const span = Math.max(1, Math.round(days ?? (which === "due_soon" ? 3 : 7)));
-		// The decks picked for the Review page, else everything; then the deck filter.
-		const scope = readAnkiConfig().decks.map((d) => `"deck:${escapeSearch(d)}"`).join(" OR ") || "-deck:Default";
+		// The daily decks; with a deck filter, separate decks too (paused ones are suspended anyway).
+		const config = readAnkiConfig();
+		const inScope = (await ankiInvoke<string[]>("deckNames")).filter((d) => {
+			const session = ankiSessionOf(config, d);
+			return deck ? session !== undefined : session === null;
+		});
 		const deckFilter = deck ? ` "deck:*${escapeSearch(deck)}*"` : "";
-		const ids = await ankiInvoke<number[]>("findCards", { query: `(${scope})${deckFilter} -is:suspended ${SET_QUERY[which](span)}` });
+		const ids = inScope.length
+			? await ankiInvoke<number[]>("findCards", { query: `(${decksQuery(inScope)})${deckFilter} -is:suspended ${SET_QUERY[which](span)}` })
+			: [];
 		const cards = ids.length
 			? await ankiInvoke<ListedCard[]>("cardsInfo", {
 					cards: ids,

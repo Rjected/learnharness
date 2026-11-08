@@ -32,7 +32,7 @@ export function ankiTools({ port, language }: AnkiToolsContext): Record<string, 
 			Object.keys(ANKI_CARD_SETS).map((k) => Type.Literal(k as AnkiCardSet)),
 			{ description: Object.entries(ANKI_CARD_SETS).map(([k, v]) => `${k} = ${v}`).join("; ") },
 		),
-		deck: Type.Optional(Type.String({ minLength: 1, description: "Only decks whose name contains this, e.g. \"Refold\" or \"speaking\"." })),
+		deck: Type.Optional(Type.String({ minLength: 1, description: "Only decks whose name contains this, e.g. \"Refold\" or \"radicals\". Without it, only their daily decks are listed; with it, separate decks can be too." })),
 		days: Type.Optional(Type.Integer({ minimum: 1, maximum: 60, description: "Window for forgotten and due_soon." })),
 		limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, description: "Most words to list (default 30)." })),
 	});

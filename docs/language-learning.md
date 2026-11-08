@@ -3,7 +3,7 @@
 This branch adds a language-learning layer to LearnHarness. Pick the language you're studying, and the tutor:
 
 - **Knows your Anki.** It checks which words you already know (`anki_lookup`) and can pull any slice of your cards (`anki_cards`: due, next new, forgotten, known…) to practise them in sentences before you review and writes those bare, giving readings only for new words. At the end of a lesson it offers flashcards, each with an **Add to Anki** button.
-- **Lets you review in the app.** The **Review** page in the sidebar shows your due cards, while Anki still does the scheduling. Space shows the answer, 1–4 grades it, R replays the audio. Reviews sync to AnkiWeb when you finish.
+- **Lets you review in the app.** The **Review** page in the sidebar shows your due cards, while Anki still does the scheduling. Space shows the answer, 1–4 grades it, R replays the audio. Reviews sync to AnkiWeb when you finish. The sliders icon gives each deck a role: **Daily** decks are your main review (and what the teacher practises by default), each **Separate** deck is its own session with a **Practise with teacher** button, **Paused** decks are suspended in Anki until you resume them (overdue reviews are then spread over a week), and **Off** decks aren't used.
 - **Speaks every sentence.** Each run of Chinese or Japanese gets a speaker button. Tap again within 4 seconds for a slow teacher voice. If one of your Anki cards already has a recording of that exact text, it plays that recording.
 - **Shows readings on demand.** Hover (laptop) or tap (phone) any Chinese or Japanese in the tutor's messages or a revealed answer to see the reading (pinyin or kana) and each word's meanings. Question blocks never get the popup, so it can't give away answers.
 - **Takes mixed dictation.** The chip next to **Dictate** (中英 / 日英) records you and transcribes mixed English and the language you're studying.
@@ -21,7 +21,7 @@ Without a language picked (**Studying: None**), LearnHarness behaves exactly as 
    ```
    Choose your models as usual (see the main [README](../README.md)).
 2. **Pick your language:** **Settings → Agent → Language learning → Studying**. The options are None, Chinese or Japanese, and Chinese is the default.
-3. **Connect Anki:** in desktop Anki, go to **Tools → Add-ons → Get Add-ons…** and enter code `2055492159` to install [AnkiConnect](https://ankiweb.net/shared/info/2055492159). Restart Anki, then leave it running whenever you use LearnHarness. On the **Review** page, the sliders icon picks which decks to review. New cards go into `Chinese::LearnHarness` or `Japanese::LearnHarness` as Basic notes; the Review settings can change the deck.
+3. **Connect Anki:** in desktop Anki, go to **Tools → Add-ons → Get Add-ons…** and enter code `2055492159` to install [AnkiConnect](https://ankiweb.net/shared/info/2055492159). Restart Anki, then leave it running whenever you use LearnHarness. On the **Review** page, the sliders icon sets each deck's role. New cards go into `Chinese::LearnHarness` or `Japanese::LearnHarness` as Basic notes; the Review settings can change the deck.
 4. **Turn on audio:** the speaker buttons stay dimmed until a Google key is saved. Tapping one opens **Settings → Keys → Audio**, which walks you through these steps:
    1. Open [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and sign in with any Google account.
    2. Accept the terms. AI Studio creates a project and a key for you, so there's no billing or Cloud console step.

@@ -14,13 +14,19 @@ import fs from "node:fs";
 import path from "node:path";
 import {
 	ANKI_LEARN_AHEAD_SECONDS,
+	ankiDeckLabel,
+	ankiDeckRole,
+	ankiSeparateDecks,
+	ankiSessionOf,
 	avTagsForTemplate,
 	rewriteCardHtml,
+	sanitizeAnkiConfig,
 	type AnkiCardView,
 	type AnkiConfig,
 	type AnkiEase,
 	type AnkiNextResponse,
 	type AnkiQueueCounts,
+	type AnkiSession,
 } from "../core/anki.ts";
 import { readAnkiConfig, writeAnkiConfig } from "../store/anki-config.ts";
 import { bytesResponse } from "./media-response.ts";
@@ -91,18 +97,22 @@ interface RawDeckConfig {
 const q = (deck: string) => `"deck:${deck.replace(/"/g, '\\"')}"`;
 /** Cards sitting directly in this deck, not its subdecks. */
 const own = (deck: string) => `${q(deck)} -${q(`${deck}::*`)}`;
+/** A search for the cards sitting directly in any of these decks. */
+export const decksQuery = (decks: readonly string[]) => decks.map((d) => `(${own(d)})`).join(" OR ");
 const ACTIVE = "-is:suspended -is:buried";
 
 let deckCache: { at: number; names: string[] } | undefined;
 
-/** The decks whose own limits apply: every deck at or under the selection. */
-async function leafDecks(config: AnkiConfig): Promise<string[]> {
+async function allDecks(config: AnkiConfig): Promise<string[]> {
 	if (!deckCache || Date.now() - deckCache.at > 60_000) {
 		deckCache = { at: Date.now(), names: await ankiInvoke<string[]>("deckNames", {}, config) };
 	}
-	const all = deckCache.names;
-	const roots = config.decks.length ? config.decks : all.filter((d) => !d.includes("::"));
-	return all.filter((d) => roots.some((r) => d === r || d.startsWith(`${r}::`)));
+	return deckCache.names;
+}
+
+/** The decks in one Review session (null = daily), each with its own limits. */
+async function sessionDecks(config: AnkiConfig, session: string | null): Promise<string[]> {
+	return (await allDecks(config)).filter((d) => ankiSessionOf(config, d) === session);
 }
 
 interface Queue {
@@ -114,9 +124,10 @@ interface Queue {
 
 const PER_DECK = 7;
 
-async function buildQueue(config: AnkiConfig, now = Date.now() / 1000): Promise<Queue> {
+async function buildQueue(config: AnkiConfig, session: string | null, now = Date.now() / 1000): Promise<Queue> {
 	const queue: Queue = { learnReady: [], learnWaiting: [], review: [], fresh: [] };
-	const decks = await leafDecks(config);
+	const decks = await sessionDecks(config, session);
+	if (!decks.length) return queue;
 	// One request for every deck (AnkiConnect round trips are the slow part).
 	const results = await ankiMulti<unknown[]>(
 		decks.flatMap((deck) => {
@@ -201,12 +212,12 @@ export async function ankiCardView(cardId: number, config = readAnkiConfig()): P
 	};
 }
 
-/** What the Review page should show next. */
-export async function ankiNext(): Promise<AnkiNextResponse> {
+/** What the Review page should show next in one session (null = daily). */
+export async function ankiNext(session: string | null = null): Promise<AnkiNextResponse> {
 	const config = readAnkiConfig();
 	try {
 		const now = Date.now() / 1000;
-		const queue = await buildQueue(config, now);
+		const queue = await buildQueue(config, session, now);
 		const counts = countsOf(queue);
 		const waiting = queue.learnWaiting[0];
 		const next =
@@ -223,13 +234,66 @@ export async function ankiNext(): Promise<AnkiNextResponse> {
 	}
 }
 
-/** Due counts only (the sidebar badge). Null when Anki is closed. */
+/** The daily session's due counts only (the sidebar badge). Null when Anki is closed. */
 export async function ankiCounts(): Promise<AnkiQueueCounts | null> {
 	try {
-		return countsOf(await buildQueue(readAnkiConfig()));
+		return countsOf(await buildQueue(readAnkiConfig(), null));
 	} catch {
 		return null;
 	}
+}
+
+/** Every Review session with its due counts — daily first, then each separate deck. Null when Anki is closed. */
+export async function ankiSessions(): Promise<AnkiSession[] | null> {
+	const config = readAnkiConfig();
+	try {
+		const all = await allDecks(config);
+		const sessions: AnkiSession[] = [{ deck: null, label: "Daily", counts: countsOf(await buildQueue(config, null)) }];
+		for (const deck of ankiSeparateDecks(config).filter((d) => all.includes(d))) {
+			sessions.push({ deck, label: ankiDeckLabel(deck, all), counts: countsOf(await buildQueue(config, deck)) });
+		}
+		return sessions;
+	} catch (err) {
+		if (err instanceof AnkiOfflineError) return null;
+		throw err;
+	}
+}
+
+/** How many days resumed reviews are spread over, so a paused deck's backlog doesn't land on one day. */
+const RESUME_SPREAD = "0-6";
+
+/**
+ * Save the config and make Anki match its paused decks: suspend the cards in
+ * paused decks, and unsuspend the ones LearnHarness suspended in decks that
+ * are no longer paused (spreading their overdue reviews over the next week).
+ * Cards the learner suspended themselves are never touched. Roles can only
+ * change while Anki is open.
+ */
+export async function saveAnkiConfig(raw: unknown): Promise<AnkiConfig> {
+	const previous = readAnkiConfig();
+	const next: AnkiConfig = { ...sanitizeAnkiConfig(raw), pausedCards: previous.pausedCards };
+	try {
+		deckCache = undefined;
+		const paused = (await allDecks(next)).filter((d) => ankiDeckRole(next, d) === "paused");
+		const inPaused = new Set(paused.length ? await ankiInvoke<number[]>("findCards", { query: decksQuery(paused) }, next) : []);
+		const resumed = previous.pausedCards.filter((id) => !inPaused.has(id));
+		if (resumed.length) {
+			const ids = `cid:${resumed.join(",")}`;
+			const still = await ankiInvoke<number[]>("findCards", { query: `${ids} is:suspended` }, next);
+			if (still.length) await ankiInvoke("unsuspend", { cards: still }, next);
+			const overdue = await ankiInvoke<number[]>("findCards", { query: `${ids} is:review -is:learn prop:due<=0` }, next);
+			if (overdue.length) await ankiInvoke("setDueDate", { cards: overdue, days: RESUME_SPREAD }, next);
+		}
+		const suspend = paused.length ? await ankiInvoke<number[]>("findCards", { query: `(${decksQuery(paused)}) -is:suspended` }, next) : [];
+		if (suspend.length) await ankiInvoke("suspend", { cards: suspend }, next);
+		next.pausedCards = [...previous.pausedCards.filter((id) => inPaused.has(id)), ...suspend];
+	} catch (err) {
+		if (!(err instanceof AnkiOfflineError)) throw err;
+		if (JSON.stringify(next.roles) !== JSON.stringify(previous.roles)) {
+			throw new AnkiOfflineError("Open Anki on your laptop to change deck roles — pausing and resuming happen in Anki.");
+		}
+	}
+	return writeAnkiConfig(next);
 }
 
 export async function ankiAnswer(cardId: number, ease: AnkiEase): Promise<void> {

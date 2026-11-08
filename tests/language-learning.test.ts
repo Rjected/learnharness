@@ -8,6 +8,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
 	ankiAddDeck,
+	ankiDeckLabel,
+	ankiDeckRole,
+	ankiSeparateDecks,
+	ankiSessionOf,
 	avTagsForTemplate,
 	parseAnkiProposals,
 	rewriteCardHtml,
@@ -106,11 +110,39 @@ describe("rewriteCardHtml", () => {
 describe("config + proposals", () => {
 	it("sanitizes the config", () => {
 		assert.deepEqual(sanitizeAnkiConfig(null), DEFAULT_ANKI_CONFIG);
-		assert.deepEqual(sanitizeAnkiConfig({ url: "ftp://x", decks: ["A", "A", 3, " B "], addDeck: "" }), {
-			url: DEFAULT_ANKI_CONFIG.url,
-			decks: ["A", "B"],
-			addDeck: DEFAULT_ANKI_CONFIG.addDeck,
-		});
+		assert.deepEqual(
+			sanitizeAnkiConfig({
+				url: "ftp://x",
+				roles: { " C ": "separate", D: "nope", E: 3 },
+				pausedCards: [5, 5, -1, 1.5, "7", 9],
+				addDeck: "",
+			}),
+			{ url: DEFAULT_ANKI_CONFIG.url, roles: { C: "separate" }, pausedCards: [5, 9], addDeck: DEFAULT_ANKI_CONFIG.addDeck },
+		);
+		// The old list of decks to review reads as daily roles.
+		assert.deepEqual(sanitizeAnkiConfig({ decks: ["A", "A", 3, " B "] }).roles, { A: "daily", B: "daily" });
+	});
+
+	it("gives each deck a role, inherited from its parent", () => {
+		const config = {
+			roles: { "Zh::Refold": "daily", "Zh::HSK · radicals": "separate", "Zh::HSK · speaking": "paused", Zh: "off" } as const,
+		};
+		assert.equal(ankiDeckRole(config, "Zh::Refold"), "daily");
+		assert.equal(ankiDeckRole(config, "Zh::Refold::Extra"), "daily");
+		assert.equal(ankiDeckRole(config, "Zh::Mahjong"), "off");
+		assert.equal(ankiDeckRole(config, "Default"), "off"); // a daily deck exists, so the rest is off
+		assert.equal(ankiDeckRole({ roles: {} }, "Default"), "daily"); // nothing chosen: everything is daily
+		assert.equal(ankiSessionOf(config, "Zh::Refold::Extra"), null);
+		assert.equal(ankiSessionOf(config, "Zh::HSK · radicals"), "Zh::HSK · radicals");
+		assert.equal(ankiSessionOf(config, "Zh::HSK · speaking"), undefined);
+		assert.deepEqual(ankiSeparateDecks(config), ["Zh::HSK · radicals"]);
+	});
+
+	it("shortens a deck name by the lead it shares with a sibling", () => {
+		const all = ["Zh", "Zh::HSK · A · radicals", "Zh::HSK · A · speaking", "Zh::Mahjong · 麻将", "Other::HSK · A · x"];
+		assert.equal(ankiDeckLabel("Zh::HSK · A · radicals", all), "radicals");
+		assert.equal(ankiDeckLabel("Zh::Mahjong · 麻将", all), "Mahjong · 麻将");
+		assert.equal(ankiDeckLabel("Other::HSK · A · x", all), "HSK · A · x");
 	});
 
 	it("parses proposals, dropping incomplete cards and reading older chinese/pinyin/english ones", () => {
