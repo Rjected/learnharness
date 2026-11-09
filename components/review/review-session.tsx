@@ -54,6 +54,8 @@ export function ReviewSession() {
 	const [startError, setStartError] = useState(false);
 	const starter = useRef(new SessionStarter());
 	const loadSeq = useRef(0);
+	/** When the current card appeared: its time goes to Anki with the grade, as Anki's own reviewer records it. */
+	const shownAt = useRef(0);
 	const [view, setView] = useState<View>({ kind: "loading" });
 	const [revealed, setRevealed] = useState(false);
 	const [busy, setBusy] = useState(false);
@@ -74,7 +76,10 @@ export function ReviewSession() {
 			if (seq !== loadSeq.current) return;
 			setRevealed(false);
 			setView({ kind: "next", ...next });
-			if (next.state === "card") void playAvTags(next.card.questionAv);
+			if (next.state === "card") {
+				shownAt.current = Date.now();
+				void playAvTags(next.card.questionAv);
+			}
 		} catch (err) {
 			if (seq === loadSeq.current) setView({ kind: "error", message: err instanceof Error ? err.message : String(err) });
 		}
@@ -162,7 +167,7 @@ export function ReviewSession() {
 				const res = await fetch("/api/anki/answer", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ cardId: card.cardId, ease }),
+					body: JSON.stringify({ cardId: card.cardId, ease, elapsedMs: Date.now() - shownAt.current }),
 				});
 				if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Answer failed");
 				setAnswered((n) => n + 1);

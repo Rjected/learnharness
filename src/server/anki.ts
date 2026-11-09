@@ -1,8 +1,9 @@
 /**
  * The Anki bridge. Anki stays the scheduling engine: this
  * module asks AnkiConnect (the add-on's HTTP API on the laptop) what is due,
- * renders one card at a time for the Review page, and hands grades back via
- * `answerCards` — so FSRS, review history and AnkiWeb sync all stay Anki's.
+ * renders one card at a time for the Review page, and hands grades back (with
+ * the time spent, for Anki's stats) through the scheduler's own answer — so
+ * FSRS, review history and AnkiWeb sync all stay Anki's.
  *
  * The queue mirrors Anki's v3 order closely enough for daily reviews:
  * learning cards that are due, then reviews (capped by each deck's review
@@ -41,26 +42,39 @@ export class AnkiOfflineError extends Error {}
 // concurrent ones, so every call goes through this chain.
 let lane: Promise<unknown> = Promise.resolve();
 
-/** One AnkiConnect call. Network failure → AnkiOfflineError (Anki closed). */
-export function ankiInvoke<T>(action: string, params: Record<string, unknown> = {}, config = readAnkiConfig()): Promise<T> {
+/** POST one request in the lane. Network failure → AnkiOfflineError (Anki closed). */
+function post<B>(url: string, payload: unknown): Promise<B> {
 	const run = lane.then(async () => {
 		let res: Response;
 		try {
-			res = await fetch(config.url, {
+			res = await fetch(url, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ action, version: 6, params }),
+				body: JSON.stringify(payload),
 				signal: AbortSignal.timeout(15_000),
 			});
 		} catch {
 			throw new AnkiOfflineError("Anki isn't running on the laptop (AnkiConnect unreachable). Open Anki and try again.");
 		}
-		const body = (await res.json()) as { result: T; error: string | null };
-		if (body.error) throw new Error(`AnkiConnect ${action}: ${body.error}`);
-		return body.result;
+		if (!res.ok) throw new Error(`AnkiConnect: HTTP ${res.status}`);
+		return (await res.json()) as B;
 	});
 	lane = run.catch(() => undefined);
 	return run;
+}
+
+/** One AnkiConnect call (the legacy API, version 6). */
+export async function ankiInvoke<T>(action: string, params: Record<string, unknown> = {}, config = readAnkiConfig()): Promise<T> {
+	const body = await post<{ result: T; error: string | null }>(config.url, { action, version: 6, params });
+	if (body.error) throw new Error(`AnkiConnect ${action}: ${body.error}`);
+	return body.result;
+}
+
+/** One call to the add-on's JSON-RPC API, which takes what the legacy one can't (an answer's time). */
+async function ankiRpc<T>(method: string, params: Record<string, unknown>, config = readAnkiConfig()): Promise<T> {
+	const body = await post<{ result?: T; error?: { message: string } }>(new URL("/api/v1", config.url).href, { jsonrpc: "2.0", id: 1, method, params });
+	if (body.error) throw new Error(`AnkiConnect ${method}: ${body.error.message}`);
+	return body.result as T;
 }
 
 /** Several AnkiConnect calls in one request (the `multi` action). */
@@ -298,9 +312,13 @@ export async function saveAnkiConfig(raw: unknown): Promise<AnkiConfig> {
 	return writeAnkiConfig(next);
 }
 
-export async function ankiAnswer(cardId: number, ease: AnkiEase): Promise<void> {
-	const [ok] = await ankiInvoke<boolean[]>("answerCards", { answers: [{ cardId, ease }] });
-	if (!ok) throw new Error(`Anki refused the answer for card ${cardId}`);
+const RATINGS = ["again", "hard", "good", "easy"] as const;
+
+/** Grade a card with the time spent on it; Anki caps the time at the deck's limit, as its reviewer does. */
+export async function ankiAnswer(cardId: number, ease: AnkiEase, elapsedMs: number): Promise<void> {
+	const id = String(cardId);
+	const { stateToken } = await ankiRpc<{ stateToken: string }>("scheduling.predict", { cardId: id });
+	await ankiRpc("scheduling.answer", { cardId: id, rating: RATINGS[ease - 1], stateToken, elapsedMs: Math.min(Math.round(elapsedMs), 3_600_000) });
 }
 
 /** Push the collection to AnkiWeb so AnkiMobile sees today's reviews. */

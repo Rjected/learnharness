@@ -21,7 +21,7 @@ import {
 import { profileForSpeech, studyLanguageOf } from "../src/core/languages.ts";
 import { sanitizeUserSettings } from "../src/core/settings.ts";
 import { parseAgentSettingsBody } from "../src/server/settings-body.ts";
-import { pairAudioFields } from "../src/server/anki.ts";
+import { ankiAnswer, pairAudioFields } from "../src/server/anki.ts";
 import { composeInstructions } from "../src/agent/teacher-agent.ts";
 import { ankiTools } from "../src/agent/tools/anki.ts";
 import { LANGUAGES } from "../src/core/languages.ts";
@@ -179,6 +179,32 @@ describe("pairAudioFields", () => {
 		});
 		assert.deepEqual(pairs(["Hanzi", "Example", "Audio"]), { Hanzi: ["Audio", undefined], Example: [undefined, undefined] });
 		assert.deepEqual(pairs(["Front", "Back", "Audio", "AudioSlow"], (f) => f === "Front"), { Front: ["Audio", "AudioSlow"] });
+	});
+});
+
+describe("ankiAnswer", () => {
+	it("answers through the scheduler with the time spent, so Anki's stats count it", async () => {
+		const calls: { url: string; body: { method: string; params: Record<string, unknown> } }[] = [];
+		const realFetch = globalThis.fetch;
+		globalThis.fetch = async (input, init) => {
+			const body = JSON.parse(String(init?.body));
+			calls.push({ url: String(input), body });
+			const result = body.method === "scheduling.predict" ? { stateToken: "tok" } : { reviewId: "1" };
+			return Response.json({ jsonrpc: "2.0", id: body.id, result });
+		};
+		try {
+			await ankiAnswer(42, 3, 8123.4);
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+		assert.ok(calls.every((c) => new URL(c.url).pathname === "/api/v1"));
+		assert.deepEqual(
+			calls.map((c) => [c.body.method, c.body.params]),
+			[
+				["scheduling.predict", { cardId: "42" }],
+				["scheduling.answer", { cardId: "42", rating: "good", stateToken: "tok", elapsedMs: 8123 }],
+			],
+		);
 	});
 });
 
