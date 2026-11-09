@@ -138,6 +138,8 @@ export const ChatActionsContext = createContext<{
 	/** Opens the model setup dialog (BYOK, 2026-09-22): refused job cards
 	 *  deep-link into the same SetupDialog the send interception uses. */
 	openSetup: () => void;
+	/** The practice problem the dock holds open (its pose call's id), if any. */
+	activeProblemId: string | null;
 } | null>(null);
 
 /** The BYOK refusal envelope from the transport's error text: the
@@ -1275,6 +1277,7 @@ export function Chat({
 					void send({ type: "text", text: t });
 				},
 				openSetup: () => setSetupOpen(true),
+				activeProblemId: activeProblem?.toolCallId ?? null,
 			}}
 		>
 		<SessionMermaidContext.Provider

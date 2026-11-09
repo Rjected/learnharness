@@ -21,8 +21,11 @@ import type { ArtifactPartProps } from "@/src/core";
  *   language in a faint user-side shell, never collapsible.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+import { ChatActionsContext } from "@/components/chat";
+import { useTouchScreen } from "@/components/use-touch-screen";
 
 import { ThinkingBlock } from "@/components/thinking-block";
 import { usePopoverDismiss } from "@/components/popover-dismiss";
@@ -63,6 +66,12 @@ export function ProblemCard({ part }: ArtifactPartProps) {
 	// renders — only the call's statement.
 	const input = (part.input ?? {}) as { statement?: string };
 	const statement = typeof input.statement === "string" ? input.statement : "";
+	const actions = useContext(ChatActionsContext);
+	const touch = useTouchScreen();
+	// Touch screens (owner round, 2026-11-09): while this is the open
+	// problem the dock shows the statement — one copy on a phone, not two.
+	// The record appears once the problem concludes.
+	if (touch && actions?.activeProblemId === part.toolCallId) return null;
 	return (
 		<div data-testid="problem-card" className="lh-card-enter my-1 rounded-xl border bg-card p-4">
 			<div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Problem</div>
