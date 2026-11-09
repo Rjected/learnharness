@@ -2282,6 +2282,8 @@ function DockOverlay({
 	// "Hide" (touch screens, owner round 2026-11-09): fold to the bar and keep
 	// the lesson at its end — the freed space goes back to the transcript.
 	const hideToEnd = () => {
+		// The keyboard would otherwise stay up over a field that's now hidden.
+		(document.activeElement as HTMLElement | null)?.blur();
 		setExpanded(false);
 		void scrollToBottom();
 	};
@@ -2485,7 +2487,13 @@ function DockOverlay({
 										void suppressFoldDuringReveal();
 									}}
 									onCollapse={touch ? hideToEnd : undefined}
-									onSubmit={onSubmitThinking}
+									onSubmit={(text) => {
+										onSubmitThinking(text);
+										// Touch screens (owner round, 2026-11-09): the open card
+										// covers most of a phone, so a submission folds it and the
+										// reply streams in at the end; the bar answers again.
+										if (touch) hideToEnd();
+									}}
 									onEscape={dictationCancel}
 									compactionRunning={compactionRunning}
 								/>
