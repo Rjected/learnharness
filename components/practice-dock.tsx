@@ -2,7 +2,7 @@
 
 import { enterSubmits } from "@/components/touch-enter";
 import { useCallback, useRef, useState } from "react";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { ToolContentResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
@@ -20,9 +20,10 @@ import { cn } from "@/lib/utils";
  * from the thinking itself; the agent reads it. One problem may carry
  * many submissions; each starts a turn.
  *
- * Collapse (scroll-up → slim bar) is owned by the DockOverlay; this
- * component is content only, and the expanded form stays MOUNTED while
- * collapsed (hidden) so a half-written trace survives scrolling.
+ * Collapse (scroll-up → slim bar; on a touch screen, the Hide button) is
+ * owned by the DockOverlay; this component is content only, and the
+ * expanded form stays MOUNTED while collapsed (hidden) so a half-written
+ * trace survives scrolling.
  *
  * The commitment (modelSolution, decisionPoints, …) rides the tool call's
  * arguments and is NOT rendered here — only the statement is the
@@ -39,6 +40,9 @@ export interface PracticeDockProps {
 	/** Collapse state, owned by the DockOverlay. */
 	expanded: boolean;
 	onExpand: () => void;
+	/** Fold to the bar (touch screens, owner round 2026-11-09: scrolling
+	 *  never folds there, so the open problem carries a Hide button). */
+	onCollapse?: () => void;
 	/** text — POST {type:"thinking"} (one lane; the register is read from the text). */
 	onSubmit: (text: string) => void;
 	/** Escape in the thinking field stops dictation (threaded from the page). */
@@ -50,7 +54,7 @@ export interface PracticeDockProps {
 	compactionRunning?: boolean;
 }
 
-export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
+export function PracticeDock({ problemCallId, input, expanded, onExpand, onCollapse, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
 	const [thinking, setThinking] = useState("");
 	// Ref MIRRORS the field ("nothing gets lost", the question-dock
 	// discipline): a submit resuming after `await finishDictation()` reads
@@ -108,7 +112,20 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 			    markdown + LaTeX rendered, capped by the measured column
 			    (--dock-max-h; the old fixed 40vh cut long problems short). */}
 			<div data-dock-scroll-area="" className="max-h-[var(--dock-max-h,40vh)] overflow-y-auto px-4 pt-3 pb-2">
-				<div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Problem</div>
+				<div className="mb-1 flex items-start gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+					<span className="min-w-0 flex-1">Problem</span>
+					{onCollapse && (
+						<button
+							type="button"
+							data-testid="practice-dock-collapse"
+							onClick={onCollapse}
+							aria-label="Hide problem"
+							className="-my-1 -mr-1.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 normal-case tracking-normal transition-colors hover:bg-accent/60 hover:text-foreground"
+						>
+							<ChevronDownIcon className="size-3.5" /> Hide
+						</button>
+					)}
+				</div>
 				<div className="lh-prose text-[15px]">
 					<ToolContentResponse>{input.statement}</ToolContentResponse>
 				</div>

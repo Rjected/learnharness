@@ -206,7 +206,9 @@ export function SidebarToggle() {
 		<span
 			className={cn(
 				"sidebar-motion lh-no-drag relative flex h-9 shrink-0 overflow-hidden duration-200",
-				open ? "w-0 -mr-3" : "w-9 mr-0 lh-closed-toggle",
+				// At phone width the sidebar covers the page, so the slot stays put —
+				// the header under the dimmed strip doesn't shift.
+				open ? "w-0 -mr-3 max-md:w-9 max-md:mr-0" : "w-9 mr-0 lh-closed-toggle",
 			)}
 		>
 			<Hint label="Open sidebar" action="toggle-sidebar">
@@ -648,8 +650,23 @@ function SessionsSidebar() {
 	}, [open, pathname, refresh]);
 
 	return (
+		<>
+		{/* Phone width (owner round, 2026-11-09): the sidebar covers the page
+		    instead of squeezing it into a strip of wrapped words; what's left
+		    of the page shows dimmed, and tapping it closes the sidebar. */}
+		<div
+			aria-hidden
+			onClick={toggle}
+			className={cn(
+				"fixed inset-0 z-40 bg-black/60 transition-opacity duration-200 md:hidden",
+				open ? "opacity-100" : "pointer-events-none opacity-0",
+			)}
+		/>
 		<aside
-			className={cn("sidebar-motion shrink-0 overflow-hidden duration-200", open ? "w-72" : "w-0")}
+			className={cn(
+				"sidebar-motion shrink-0 overflow-hidden duration-200 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50",
+				open ? "w-72" : "w-0",
+			)}
 			aria-hidden={!open}
 		>
 			<div className="flex h-full w-72 flex-col border-r bg-background">
@@ -942,6 +959,7 @@ function SessionsSidebar() {
 					onDeleted={onDeleted}
 				/>
 			</aside>
+		</>
 	);
 }
 

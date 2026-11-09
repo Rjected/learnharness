@@ -2,7 +2,7 @@
 
 import { enterSubmits } from "@/components/touch-enter";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownIcon, ArrowUpIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
@@ -80,6 +80,10 @@ export interface QuestionDockProps {
 	 *  never reach the transcript, so the scroll-up fold is unreachable —
 	 *  this is the explicit way out. */
 	onCollapse?: () => void;
+	/** What the collapse button does: "read-above" jumps to the teacher's
+	 *  reply; "hide" (touch screens, owner round 2026-11-09) only folds the
+	 *  dock, leaving the transcript at its end. */
+	collapseKind?: "read-above" | "hide";
 	onSubmit: (output: QuestionAnswerData) => void;
 	/** Restore only this call's unconfirmed submission after recovery. */
 	initialDraft?: QuestionFormDraft;
@@ -113,6 +117,7 @@ export function QuestionDock({
 	reveal = false,
 	onExpand,
 	onCollapse,
+	collapseKind,
 	onSubmit,
 	initialDraft,
 	onSaveDraft,
@@ -167,6 +172,7 @@ export function QuestionDock({
 					phase={phase}
 					active={expanded}
 					onCollapse={onCollapse}
+					collapseKind={collapseKind}
 					onSubmit={onSubmit}
 					initialDraft={initialDraft}
 					onSaveDraft={onSaveDraft}
@@ -271,6 +277,7 @@ function QuestionDockForm({
 	dictationClaim = true,
 	compactionRunning = false,
 	onCollapse,
+	collapseKind = "read-above",
 }: Omit<QuestionDockProps, "expanded" | "onExpand" | "reveal">) {
 	const kind = toolQuestionKind(toolName);
 
@@ -592,10 +599,18 @@ function QuestionDockForm({
 							type="button"
 							data-testid="question-dock-collapse"
 							onClick={onCollapse}
-							aria-label="Hide question and show the teacher's last message"
+							aria-label={collapseKind === "hide" ? "Hide question" : "Hide question and show the teacher's last message"}
 							className="-my-1 -mr-1.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 normal-case tracking-normal transition-colors hover:bg-accent/60 hover:text-foreground"
 						>
-							<ArrowUpIcon className="size-3.5" /> Read above
+							{collapseKind === "hide" ? (
+								<>
+									<ChevronDownIcon className="size-3.5" /> Hide
+								</>
+							) : (
+								<>
+									<ArrowUpIcon className="size-3.5" /> Read above
+								</>
+							)}
 						</button>
 					)}
 				</div>

@@ -87,6 +87,7 @@ import {
 } from "@/src/core";
 import { ReadingThinkingField } from "@/components/reading-thinking";
 import { currentUserThinkingOpen, setAllUserThinkingOpen } from "@/components/thinking-block";
+import { useTouchScreen } from "@/components/use-touch-screen";
 
 /** One width for everything: transcript, cards, and the bottom blob share this column. */
 /**
@@ -108,8 +109,12 @@ const DOCK = "mx-auto w-full max-w-[46rem] px-4";
 const DOCK_W = 46 * 16;
 const MARGIN_GAP = 16;
 const MARGIN_MIN_W = 220;
-// The dock overlay's gradient band (h-24) — part of the reserved tail.
+// The dock overlay's gradient band — part of the reserved tail.
 const GRADIENT_H = 96;
+// On a touch screen a question or problem leaves the phone little room, and
+// the full band read as a blank gap between the lesson and the card (owner
+// round, 2026-11-09): there the band is only a sliver.
+const TOUCH_GRADIENT_H = 16;
 // Fold thresholds (owner, scroll round 1, tuned round 3): pixel distance
 // from the bottom — position, not velocity. Leave the bottom → the box
 // folds (visual only); reach it again → it re-opens. 96 (was 64, owner
@@ -1847,7 +1852,8 @@ export function Chat({
  * Collapse: scroll up past COLLAPSE_DIST and the dock folds into a slim bar;
  * click it (or scroll back to the bottom) to re-expand. The question form
  * stays MOUNTED while collapsed (hidden, not unmounted) so a half-made
- * selection survives.
+ * selection survives. Touch screens don't fold on scroll at all: the open
+ * card's Hide button folds it, the bar re-opens it.
  */
 /**
  * How a teach-phase question arrives (owner ruling, 2026-09-25): collapsed
@@ -2016,6 +2022,15 @@ function DockOverlay({
 	setupCta?: React.ReactNode;
 }) {
 	const { isAtBottom, scrollToBottom, scrollRef, stopScroll } = useStickToBottomContext();
+	// Touch screens (owner round, 2026-11-09): scrolling never folds or opens
+	// the dock — the bar opens it, the open card's Hide button folds it — so
+	// the reserve may track the dock exactly, both ways.
+	const touch = useTouchScreen();
+	const touchRef = useRef(touch);
+	touchRef.current = touch;
+	const band = touch && (!!pending || !!practice) ? TOUCH_GRADIENT_H : GRADIENT_H;
+	const bandRef = useRef(band);
+	bandRef.current = band;
 	// Render-fresh bottom state (flicker round): the arrival block below reads
 	// it DURING RENDER — the same value the after-paint effect used to read a
 	// frame too late. Assigned per render like the other refs below.
@@ -2142,8 +2157,10 @@ function DockOverlay({
 	// learner back to the bottom. Composer mode may give space back.
 	const reserveRef = useRef(0);
 	const offer = useCallback((blockH: number) => {
-		const next = blockH + GRADIENT_H;
-		if (next <= reserveRef.current + 0.5 && pendingRef.current) {
+		const next = blockH + bandRef.current;
+		// Touch screens have no scroll fold for a shrink to fight, so the
+		// space comes back at once — no blank tail under the lesson.
+		if (next <= reserveRef.current + 0.5 && pendingRef.current && !touchRef.current) {
 			// Keep the space, unless the learner sits so far above the bottom that
 			// the clamp cannot reach them ("Read above" lands screens up): then the
 			// give-back is safe, and keeping it leaves a dock-tall gap under the transcript.
@@ -2262,6 +2279,12 @@ function DockOverlay({
 		if (el && target) scrollSessionTarget(target, el, { scrollRef, stopScroll });
 		setExpanded(false);
 	};
+	// "Hide" (touch screens, owner round 2026-11-09): fold to the bar and keep
+	// the lesson at its end — the freed space goes back to the transcript.
+	const hideToEnd = () => {
+		setExpanded(false);
+		void scrollToBottom();
+	};
 	const expandAndRevealRef = useRef(expandAndReveal);
 	expandAndRevealRef.current = expandAndReveal;
 	// ENTER OPENS THE WAITING CHECK (owner, keyboard round 2026-10-06):
@@ -2300,7 +2323,7 @@ function DockOverlay({
 		const el = scrollRef.current;
 		if (!el) return;
 		const onScroll = () => {
-			if (!pendingRef.current) return;
+			if (!pendingRef.current || touchRef.current) return;
 			// Resize mute (owner, resize round): a geometry change re-clamps
 			// scrollTop and the browser emits the clamp as a scroll event —
 			// reading the transient position folded the box to the bar for a
@@ -2393,7 +2416,7 @@ function DockOverlay({
 
 	return (
 		<div className="pointer-events-none absolute inset-x-0 bottom-0" style={{ right: sbInset }}>
-			<div className="h-24 bg-gradient-to-t from-background via-background/85 to-transparent" />
+			<div className="bg-gradient-to-t from-background via-background/85 to-transparent" style={{ height: band }} />
 			<div ref={blockRef} className="relative bg-background pb-5">
 				<div className={DOCK}>
 					<div ref={viewportRef} data-dock-viewport="" className="pointer-events-auto">
@@ -2443,7 +2466,8 @@ function DockOverlay({
 									reveal={revealPending}
 									phase={phase}
 									onExpand={expandAndReveal}
-									onCollapse={collapseToTeacher}
+									onCollapse={touch ? hideToEnd : collapseToTeacher}
+									collapseKind={touch ? "hide" : "read-above"}
 									onSubmit={onSubmitAnswer}
 									initialDraft={initialQuestionDraft}
 									onSaveDraft={onSaveQuestionDraft}
@@ -2460,6 +2484,7 @@ function DockOverlay({
 										setExpanded(true);
 										void suppressFoldDuringReveal();
 									}}
+									onCollapse={touch ? hideToEnd : undefined}
 									onSubmit={onSubmitThinking}
 									onEscape={dictationCancel}
 									compactionRunning={compactionRunning}
