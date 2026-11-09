@@ -470,6 +470,7 @@ export function Chat({
 	// replaces the composer. Computed from the NATIVE record (the fold is
 	// the gate the tools themselves read), not the projected view.
 	const activeProblem = activeProblemOf(nativeMessages);
+	const touch = useTouchScreen();
 	const activeProblemRef = useRef(activeProblem);
 	activeProblemRef.current = activeProblem;
 
@@ -1772,7 +1773,10 @@ export function Chat({
 							// applies.
 							nextProblem={nextReady}
 							onNext={sendNext}
-							placeholder={nextReady ? "Ask anything, or press Enter for the next one." : undefined}
+							// A touch keyboard's Enter is a newline, so the Enter hint
+							// would be wrong there — and it wrapped out of sight beside
+							// the button (owner round, 2026-11-09).
+							placeholder={nextReady ? (touch ? "Ask anything" : "Ask anything, or press Enter for the next one.") : undefined}
 						/>
 					}
 					onSubmitAnswer={(output) => {
