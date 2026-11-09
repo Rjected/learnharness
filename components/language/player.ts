@@ -32,6 +32,39 @@ export function unlockAudio(): void {
 	});
 }
 
+let held: { ctx: AudioContext; holders: number; wake: () => void } | null = null;
+
+/**
+ * Keep the audio output running while a page that autoplays is open. A TV
+ * over HDMI (or Bluetooth headphones) drops the link after a few seconds of
+ * quiet and clips the start of the next sound while it comes back. A faint
+ * constant signal, far below hearing, keeps it up — pure zeros would let
+ * Chrome park the output. The context can only start inside a user gesture,
+ * so the first tap or key starts it. Returns the release.
+ */
+export function holdAudioOutput(): () => void {
+	if (typeof window === "undefined" || typeof AudioContext === "undefined") return () => {};
+	if (!held) {
+		const ctx = new AudioContext();
+		const level = new ConstantSourceNode(ctx, { offset: 1e-4 });
+		level.connect(ctx.destination);
+		level.start();
+		const wake = () => void ctx.resume().catch(() => undefined);
+		held = { ctx, holders: 0, wake };
+		wake();
+		window.addEventListener("pointerdown", wake);
+		window.addEventListener("keydown", wake);
+	}
+	held.holders++;
+	return () => {
+		if (!held || --held.holders > 0) return;
+		window.removeEventListener("pointerdown", held.wake);
+		window.removeEventListener("keydown", held.wake);
+		void held.ctx.close();
+		held = null;
+	};
+}
+
 export function stopAudio(): void {
 	generation++;
 	if (element) element.pause();

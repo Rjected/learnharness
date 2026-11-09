@@ -17,7 +17,7 @@ import { SessionStarter } from "@/components/start-session";
 import { SidebarToggle } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { playAvTags, stopAudio, unlockAudio } from "@/components/language/player";
+import { holdAudioOutput, playAvTags, stopAudio, unlockAudio } from "@/components/language/player";
 import { CardFrame, type FrameMessage } from "@/components/review/card-frame";
 import { DeckSettings } from "@/components/review/deck-settings";
 
@@ -93,6 +93,9 @@ export function ReviewSession() {
 	useEffect(() => {
 		void loadSessions();
 	}, [loadSessions]);
+
+	// Keep the speaker (a TV over HDMI, say) awake so a card's first sound isn't clipped.
+	useEffect(() => holdAudioOutput(), []);
 
 	const switchTo = useCallback(
 		(deck: string | null) => router.replace(deck ? `/review?deck=${encodeURIComponent(deck)}` : "/review"),
