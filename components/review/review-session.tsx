@@ -62,7 +62,6 @@ export function ReviewSession() {
 	const [answered, setAnswered] = useState(0);
 	const [syncNote, setSyncNote] = useState<string | null>(null);
 	const [showDecks, setShowDecks] = useState(false);
-	const synced = useRef(false);
 
 	const card = view.kind === "next" && view.state === "card" ? view.card : null;
 
@@ -134,15 +133,6 @@ export function ReviewSession() {
 		setSyncNote(res?.ok ? "Synced to AnkiWeb" : "Sync failed — Anki will sync next time it opens");
 	}, []);
 
-	// Finished (or only waiting on learning steps): push today's work to AnkiWeb once.
-	const finished = view.kind === "next" && (view.state === "done" || view.state === "waiting");
-	useEffect(() => {
-		if (finished && answered > 0 && !synced.current) {
-			synced.current = true;
-			void sync();
-		}
-	}, [finished, answered, sync]);
-
 	// Waiting on a learning step: check again when it comes due.
 	const dueAt = view.kind === "next" && view.state === "waiting" ? view.dueAt : null;
 	useEffect(() => {
@@ -171,15 +161,17 @@ export function ReviewSession() {
 				});
 				if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Answer failed");
 				setAnswered((n) => n + 1);
-				synced.current = false;
 				await load();
+				// Every grade goes to AnkiWeb, behind the next card so it shows without waiting
+				// (owner round 2026-11-10); a grade sent mid-sync waits in the server's Anki lane.
+				void sync();
 			} catch (err) {
 				setView({ kind: "error", message: err instanceof Error ? err.message : String(err) });
 			} finally {
 				setBusy(false);
 			}
 		},
-		[card, revealed, busy, load],
+		[card, revealed, busy, load, sync],
 	);
 
 	const replay = useCallback(() => {

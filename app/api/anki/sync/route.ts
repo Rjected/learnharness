@@ -1,4 +1,4 @@
-/** POST /api/anki/sync — push today's reviews to AnkiWeb. */
+/** POST /api/anki/sync — sync with AnkiWeb; answers once the sync has finished. */
 import { ankiSync } from "@/src/server";
 
 export const dynamic = "force-dynamic";

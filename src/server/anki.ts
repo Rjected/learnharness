@@ -363,9 +363,30 @@ export async function ankiAnswer(cardId: number, ease: AnkiEase, elapsedMs: numb
 	});
 }
 
-/** Push the collection to AnkiWeb so AnkiMobile sees today's reviews. */
+/** How often a running sync is checked, and how long one may run before we stop waiting. */
+const SYNC_POLL_MS = 150;
+const SYNC_TIMEOUT_MS = 120_000;
+
+/**
+ * Sync the collection with AnkiWeb so the phone sees today's reviews. Anki
+ * answers every other call "busy" while a sync runs, so the sync holds the
+ * lane until it has finished (about half a second). A full sync can't finish
+ * from here — Anki asks on the Mac which side wins — so that throws.
+ */
 export async function ankiSync(): Promise<void> {
-	await ankiInvoke("sync");
+	const config = readAnkiConfig();
+	await inLane(async () => {
+		const { operationId } = await ankiRpc<{ operationId: string }>("collection.sync", {}, config);
+		const deadline = Date.now() + SYNC_TIMEOUT_MS;
+		for (;;) {
+			const op = await ankiRpc<{ state: string; error?: { message: string } }>("operations.get", { operationId }, config);
+			if (op.state === "succeeded") return;
+			if (op.state === "failed" || op.state === "cancelled") throw new Error(`AnkiWeb sync ${op.state}: ${op.error?.message ?? "no reason given"}`);
+			if (op.state === "waitingForUser") throw new Error("Anki needs a full sync: choose Upload or Download in Anki on the Mac.");
+			if (Date.now() > deadline) throw new Error("AnkiWeb sync is taking too long.");
+			await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_MS));
+		}
+	});
 }
 
 export async function ankiDeckNames(): Promise<string[]> {

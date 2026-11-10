@@ -21,7 +21,7 @@ import {
 import { profileForSpeech, studyLanguageOf } from "../src/core/languages.ts";
 import { sanitizeUserSettings } from "../src/core/settings.ts";
 import { parseAgentSettingsBody } from "../src/server/settings-body.ts";
-import { ankiAnswer, pairAudioFields } from "../src/server/anki.ts";
+import { ankiAnswer, ankiSync, pairAudioFields } from "../src/server/anki.ts";
 import { composeInstructions } from "../src/agent/teacher-agent.ts";
 import { ankiTools } from "../src/agent/tools/anki.ts";
 import { LANGUAGES } from "../src/core/languages.ts";
@@ -239,6 +239,36 @@ describe("ankiAnswer", () => {
 		const other = await answering(["invalidState"]);
 		assert.equal(other.error, "AnkiConnect scheduling.answer: invalidState!");
 		assert.equal(other.methods.length, 2);
+	});
+});
+
+describe("ankiSync", () => {
+	// Anki answers every other call "busy" mid-sync, so the sync must not return until it has finished.
+	const syncing = async (states: string[]) => {
+		const methods: string[] = [];
+		const realFetch = globalThis.fetch;
+		globalThis.fetch = async (_input, init) => {
+			const body = JSON.parse(String(init?.body));
+			methods.push(body.method);
+			const result = body.method === "collection.sync" ? { operationId: "op" } : { state: states.shift() };
+			return Response.json({ jsonrpc: "2.0", id: body.id, result });
+		};
+		try {
+			return { methods, error: await ankiSync().then(() => undefined, (err: Error) => err.message) };
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	};
+
+	it("waits until the sync has finished", async () => {
+		const { methods, error } = await syncing(["running", "succeeded"]);
+		assert.equal(error, undefined);
+		assert.deepEqual(methods, ["collection.sync", "operations.get", "operations.get"]);
+	});
+
+	it("stops waiting when Anki asks on the Mac for a full sync", async () => {
+		const { error } = await syncing(["waitingForUser"]);
+		assert.match(error ?? "", /full sync/);
 	});
 });
 
