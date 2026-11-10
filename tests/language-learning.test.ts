@@ -206,6 +206,40 @@ describe("ankiAnswer", () => {
 			],
 		);
 	});
+
+	// Anki answers a stale token (a learning card's second ticked over) with a "conflict".
+	const answering = async (answerErrors: (string | undefined)[]) => {
+		const methods: string[] = [];
+		const realFetch = globalThis.fetch;
+		globalThis.fetch = async (_input, init) => {
+			const body = JSON.parse(String(init?.body));
+			methods.push(body.method);
+			if (body.method === "scheduling.predict") return Response.json({ jsonrpc: "2.0", id: body.id, result: { stateToken: `tok${methods.length}` } });
+			const type = answerErrors.shift();
+			if (!type) return Response.json({ jsonrpc: "2.0", id: body.id, result: { reviewId: "1" } });
+			return Response.json({ jsonrpc: "2.0", id: body.id, error: { code: -32000, message: `${type}!`, data: { type } } });
+		};
+		try {
+			return { methods, error: await ankiAnswer(42, 3, 1000).then(() => undefined, (err: Error) => err.message) };
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	};
+
+	it("predicts again when the token went stale", async () => {
+		const { methods, error } = await answering(["conflict"]);
+		assert.equal(error, undefined);
+		assert.deepEqual(methods, ["scheduling.predict", "scheduling.answer", "scheduling.predict", "scheduling.answer"]);
+	});
+
+	it("gives up after three stale tokens, and never retries other errors", async () => {
+		const stale = await answering(["conflict", "conflict", "conflict"]);
+		assert.equal(stale.error, "AnkiConnect scheduling.answer: conflict!");
+		assert.equal(stale.methods.length, 6);
+		const other = await answering(["invalidState"]);
+		assert.equal(other.error, "AnkiConnect scheduling.answer: invalidState!");
+		assert.equal(other.methods.length, 2);
+	});
 });
 
 describe("remarkSay", () => {

@@ -42,25 +42,33 @@ export class AnkiOfflineError extends Error {}
 // concurrent ones, so every call goes through this chain.
 let lane: Promise<unknown> = Promise.resolve();
 
-/** POST one request in the lane. Network failure → AnkiOfflineError (Anki closed). */
-function post<B>(url: string, payload: unknown): Promise<B> {
-	const run = lane.then(async () => {
-		let res: Response;
-		try {
-			res = await fetch(url, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(payload),
-				signal: AbortSignal.timeout(15_000),
-			});
-		} catch {
-			throw new AnkiOfflineError("Anki isn't running on the laptop (AnkiConnect unreachable). Open Anki and try again.");
-		}
-		if (!res.ok) throw new Error(`AnkiConnect: HTTP ${res.status}`);
-		return (await res.json()) as B;
-	});
+/** Run `work` alone in the lane: no other call reaches AnkiConnect until it settles. */
+function inLane<T>(work: () => Promise<T>): Promise<T> {
+	const run = lane.then(work);
 	lane = run.catch(() => undefined);
 	return run;
+}
+
+/** POST straight to AnkiConnect — only from inside the lane. Network failure → AnkiOfflineError (Anki closed). */
+async function send<B>(url: string, payload: unknown): Promise<B> {
+	let res: Response;
+	try {
+		res = await fetch(url, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+			signal: AbortSignal.timeout(15_000),
+		});
+	} catch {
+		throw new AnkiOfflineError("Anki isn't running on the laptop (AnkiConnect unreachable). Open Anki and try again.");
+	}
+	if (!res.ok) throw new Error(`AnkiConnect: HTTP ${res.status}`);
+	return (await res.json()) as B;
+}
+
+/** POST one request in the lane. */
+function post<B>(url: string, payload: unknown): Promise<B> {
+	return inLane(() => send<B>(url, payload));
 }
 
 /** One AnkiConnect call (the legacy API, version 6). */
@@ -70,10 +78,23 @@ export async function ankiInvoke<T>(action: string, params: Record<string, unkno
 	return body.result;
 }
 
-/** One call to the add-on's JSON-RPC API, which takes what the legacy one can't (an answer's time). */
-async function ankiRpc<T>(method: string, params: Record<string, unknown>, config = readAnkiConfig()): Promise<T> {
-	const body = await post<{ result?: T; error?: { message: string } }>(new URL("/api/v1", config.url).href, { jsonrpc: "2.0", id: 1, method, params });
-	if (body.error) throw new Error(`AnkiConnect ${method}: ${body.error.message}`);
+/** A JSON-RPC error, with the add-on's error type ("conflict", "notFound", …). */
+class AnkiRpcError extends Error {
+	constructor(
+		message: string,
+		readonly type: string | undefined,
+	) {
+		super(message);
+	}
+}
+
+/**
+ * One call to the add-on's JSON-RPC API, which takes what the legacy one
+ * can't (an answer's time). Must be called from inside the lane (`inLane`).
+ */
+async function ankiRpc<T>(method: string, params: Record<string, unknown>, config: AnkiConfig): Promise<T> {
+	const body = await send<{ result?: T; error?: { message: string; data?: { type?: string } } }>(new URL("/api/v1", config.url).href, { jsonrpc: "2.0", id: 1, method, params });
+	if (body.error) throw new AnkiRpcError(`AnkiConnect ${method}: ${body.error.message}`, body.error.data?.type);
 	return body.result as T;
 }
 
@@ -314,11 +335,32 @@ export async function saveAnkiConfig(raw: unknown): Promise<AnkiConfig> {
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 
-/** Grade a card with the time spent on it; Anki caps the time at the deck's limit, as its reviewer does. */
+/** Tries at a grade whose prediction went stale before it landed. */
+const ANSWER_TRIES = 3;
+
+/**
+ * Grade a card with the time spent on it; Anki caps the time at the deck's
+ * limit, as its reviewer does. The answer must carry a token from a fresh
+ * prediction, and a learning card's state counts the seconds since it was
+ * last seen — so when a second ticks over between the two calls, Anki
+ * rejects the token as stale (nothing is graded). Both calls hold the lane
+ * so nothing else lands between them, and a stale one is predicted again.
+ */
 export async function ankiAnswer(cardId: number, ease: AnkiEase, elapsedMs: number): Promise<void> {
 	const id = String(cardId);
-	const { stateToken } = await ankiRpc<{ stateToken: string }>("scheduling.predict", { cardId: id });
-	await ankiRpc("scheduling.answer", { cardId: id, rating: RATINGS[ease - 1], stateToken, elapsedMs: Math.min(Math.round(elapsedMs), 3_600_000) });
+	const config = readAnkiConfig();
+	const answer = { cardId: id, rating: RATINGS[ease - 1], elapsedMs: Math.min(Math.round(elapsedMs), 3_600_000) };
+	await inLane(async () => {
+		for (let attempt = 1; ; attempt++) {
+			const { stateToken } = await ankiRpc<{ stateToken: string }>("scheduling.predict", { cardId: id }, config);
+			try {
+				await ankiRpc("scheduling.answer", { ...answer, stateToken }, config);
+				return;
+			} catch (err) {
+				if (!(err instanceof AnkiRpcError && err.type === "conflict") || attempt === ANSWER_TRIES) throw err;
+			}
+		}
+	});
 }
 
 /** Push the collection to AnkiWeb so AnkiMobile sees today's reviews. */
