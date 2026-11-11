@@ -23,7 +23,6 @@ const FORMAT = "ja-gloss/1";
 /** Longest surface tried from one position; long enough for 勉強させられませんでした and most set phrases. */
 const MAX_WORD = 20;
 const MAX_ENTRIES = 3;
-const MAX_DEFS = 4;
 /** Hits scoring this far below the best are dropped (see findHits). */
 const CUTOFF = 25;
 /** Score of a common word met as written (news1/ichi1/spec/gai1 is 40, less a little for inflection). */
@@ -718,7 +717,7 @@ function counterRank(h: Hit): number {
 
 const clip = (d: string) => (d.length > 110 ? `${d.slice(0, 107).trimEnd()}…` : d);
 
-/** Hits → popup entries: one per dictionary form, archaic senses dropped when others remain, 3 × 4 at most. */
+/** Hits → popup entries: one per dictionary form, archaic senses dropped when others remain, 3 at most (every sense: the popup keeps the rest behind a tap). */
 function toEntries(hits: Hit[], kanaSurface: boolean): GlossEntry[] {
 	const merged: { key: string; reading: string; defs: string[] }[] = [];
 	for (const h of hits) {
@@ -731,7 +730,7 @@ function toEntries(hits: Hit[], kanaSurface: boolean): GlossEntry[] {
 		if (same) same.defs.push(...defs.filter((x) => !same.defs.includes(x)));
 		else merged.push({ key, reading, defs: [...new Set(defs)] });
 	}
-	return merged.slice(0, MAX_ENTRIES).map((m) => ({ reading: m.reading, defs: m.defs.slice(0, MAX_DEFS) }));
+	return merged.slice(0, MAX_ENTRIES).map((m) => ({ reading: m.reading, defs: m.defs }));
 }
 
 // ── Sentence ─────────────────────────────────────────────────────────────────

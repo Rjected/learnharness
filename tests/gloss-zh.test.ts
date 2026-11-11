@@ -41,6 +41,13 @@ describe("glossChinese", { skip: !hasDict && "no CC-CEDICT in the data dir" }, (
 		assert.equal(glossChinese("女儿").reading, "nǚ'ér");
 	});
 
+	it("sends every sense, not just CEDICT's first few", () => {
+		// 号's "day of the month" is its 8th sense; 点's "o'clock" its 13th.
+		const senses = (text: string, w: string) => word(text, w).entries.flatMap((e) => e.defs);
+		assert.ok(senses("八月十五号", "号").some((d) => d.startsWith("day of the month")));
+		assert.ok(senses("三点半", "点").some((d) => d.includes("o'clock")));
+	});
+
 	it("glosses potential complements through the verb–result word", () => {
 		const w = word("找得到我的朋友", "找得到");
 		assert.equal(w.reading, "zhǎodedào");

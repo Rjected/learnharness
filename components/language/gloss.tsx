@@ -109,6 +109,31 @@ export function GlossPopup({ text, children }: { text: string; children: ReactNo
 	);
 }
 
+/** Senses shown before "+N more": dictionaries don't list the common sense first (号's "day of the month" is 8th). */
+const SHOWN_SENSES = 4;
+
+function Senses({ defs }: { defs: string[] }) {
+	const [all, setAll] = useState(false);
+	const hidden = defs.length - SHOWN_SENSES;
+	return (
+		<>
+			{(all ? defs : defs.slice(0, SHOWN_SENSES)).join("; ")}
+			{hidden > 0 && !all && (
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						setAll(true);
+					}}
+					className="block py-0.5 text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+				>
+					+{hidden} more
+				</button>
+			)}
+		</>
+	);
+}
+
 function GlossBody({ gloss }: { gloss: Gloss }) {
 	// Every word of the language, read or not (a name JMdict lacks still says "not in dictionary"); punctuation drops.
 	const words = gloss.words.filter((w) => w.reading || CJK.test(w.text));
@@ -128,7 +153,7 @@ function GlossBody({ gloss }: { gloss: Gloss }) {
 									{(w.entries.length > 1 || e.reading.replace(/\s/g, "").toLowerCase() !== w.reading.replace(/'/g, "").toLowerCase()) && (
 										<span className="mr-1 text-muted-foreground">{e.reading}</span>
 									)}
-									{e.defs.join("; ")}
+									<Senses defs={e.defs} />
 								</div>
 							))
 						)}

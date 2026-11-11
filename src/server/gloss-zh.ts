@@ -106,7 +106,8 @@ function rank(entries: GlossEntry[], syls: string[]): GlossEntry[] {
 	// 东西 dōngxī keeps "thing", dōng xi, since a neutral dictionary syllable fits any tone).
 	const matching = merged.filter((e) => fits(e.reading, syls));
 	const clip = (d: string) => (d.length > 110 ? `${d.slice(0, 107).trimEnd()}…` : d);
-	return (matching.length ? matching : merged).slice(0, 3).map((e) => ({ ...e, defs: e.defs.slice(0, 4).map(clip) }));
+	// Every sense goes out: the popup shows the first few and keeps the rest behind a tap.
+	return (matching.length ? matching : merged).slice(0, 3).map((e) => ({ ...e, defs: e.defs.map(clip) }));
 }
 
 /** pinyin-pro's contextual syllables, but CEDICT's neutral tones (朋友 péngyou) where they otherwise agree. */

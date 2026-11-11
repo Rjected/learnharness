@@ -240,11 +240,11 @@ describe("glossJapanese", { skip: !hasDict && `no built dictionary at ${DICT}` }
 		assert.deepEqual(split("3時間"), ["3", "時間"]);
 	});
 
-	it("keeps the popup small: at most 3 entries of 4 short defs", () => {
+	it("keeps the popup small: at most 3 entries of short defs", () => {
 		for (const w of gloss("私はかけるといいました。行った").words) {
 			assert.ok(w.entries.length <= 3, w.text);
 			for (const e of w.entries) {
-				assert.ok(e.defs.length >= 1 && e.defs.length <= 4, w.text);
+				assert.ok(e.defs.length >= 1, w.text);
 				for (const d of e.defs) assert.ok(d.length <= 110, d);
 			}
 		}
