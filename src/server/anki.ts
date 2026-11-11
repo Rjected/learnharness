@@ -39,13 +39,16 @@ export { readAnkiConfig, writeAnkiConfig };
 export class AnkiOfflineError extends Error {}
 
 // AnkiConnect's HTTP server handles one connection at a time and drops
-// concurrent ones, so every call goes through this chain.
-let lane: Promise<unknown> = Promise.resolve();
+// concurrent ones, so every call goes through this chain. It lives on
+// globalThis because the background sync starts from instrumentation.ts,
+// which Next may bundle with its own copy of this module.
+const LANE = Symbol.for("lh.ankiLane");
 
 /** Run `work` alone in the lane: no other call reaches AnkiConnect until it settles. */
 function inLane<T>(work: () => Promise<T>): Promise<T> {
-	const run = lane.then(work);
-	lane = run.catch(() => undefined);
+	const global = globalThis as typeof globalThis & { [LANE]?: Promise<unknown> };
+	const run = (global[LANE] ?? Promise.resolve()).then(work);
+	global[LANE] = run.catch(() => undefined);
 	return run;
 }
 
@@ -387,6 +390,31 @@ export async function ankiSync(): Promise<void> {
 			await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_MS));
 		}
 	});
+}
+
+/** How often the server syncs with AnkiWeb on its own, so reviews done on the phone show up here (owner round 2026-11-10). */
+const AUTO_SYNC_MS = 10 * 60_000;
+
+/**
+ * One background sync. None while the language layer is off; Anki being
+ * closed isn't worth a log line (it syncs itself when it opens), anything
+ * else goes to the server log.
+ */
+export async function ankiAutoSync(studying: boolean): Promise<void> {
+	if (!studying) return;
+	try {
+		await ankiSync();
+	} catch (err) {
+		if (!(err instanceof AnkiOfflineError)) console.error("[anki] background sync failed:", err instanceof Error ? err.message : err);
+	}
+}
+
+const AUTO_SYNC = Symbol.for("lh.ankiAutoSync");
+
+/** Start the background sync, once per server (instrumentation.ts). `studying` is asked at every tick. */
+export function startAnkiAutoSync(studying: () => boolean): void {
+	const global = globalThis as typeof globalThis & { [AUTO_SYNC]?: ReturnType<typeof setInterval> };
+	global[AUTO_SYNC] ??= setInterval(() => void ankiAutoSync(studying()), AUTO_SYNC_MS);
 }
 
 export async function ankiDeckNames(): Promise<string[]> {

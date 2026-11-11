@@ -45,6 +45,9 @@ function Counts({ counts }: { counts: AnkiQueueCounts }) {
 
 const total = (c: AnkiQueueCounts) => c.new + c.learning + c.review;
 
+/** Shown under the card too, so a failed sync isn't hidden until the session ends. */
+const SYNC_FAILED = "Sync failed — Anki will sync next time it opens";
+
 export function ReviewSession() {
 	const router = useRouter();
 	/** The separate deck being reviewed; null = the daily decks. */
@@ -61,6 +64,7 @@ export function ReviewSession() {
 	const [busy, setBusy] = useState(false);
 	const [answered, setAnswered] = useState(0);
 	const [syncNote, setSyncNote] = useState<string | null>(null);
+	const [syncing, setSyncing] = useState(false);
 	const [showDecks, setShowDecks] = useState(false);
 
 	const card = view.kind === "next" && view.state === "card" ? view.card : null;
@@ -84,10 +88,45 @@ export function ReviewSession() {
 		}
 	}, [session]);
 
+	const sync = useCallback(async () => {
+		setSyncNote("Syncing to AnkiWeb…");
+		const res = await fetch("/api/anki/sync", { method: "POST" }).catch(() => null);
+		setSyncNote(res?.ok ? "Synced to AnkiWeb" : SYNC_FAILED);
+	}, []);
+
+	// Opening Review, or coming back to it (from AnkiMobile, say): pull from AnkiWeb before
+	// showing a card, so one already done on the phone never shows (owner round 2026-11-10).
+	const refreshing = useRef(false);
+	const refresh = useCallback(async () => {
+		if (refreshing.current) return;
+		refreshing.current = true;
+		setSyncing(true);
+		try {
+			await sync();
+			setSyncing(false);
+			await load();
+		} finally {
+			refreshing.current = false;
+		}
+	}, [sync, load]);
+
+	const opened = useRef(false);
 	useEffect(() => {
-		void load();
+		if (opened.current) void load();
+		else {
+			opened.current = true;
+			void refresh();
+		}
 		return () => stopAudio();
-	}, [load]);
+	}, [load, refresh]);
+
+	useEffect(() => {
+		const onVisible = () => {
+			if (document.visibilityState === "visible") void refresh();
+		};
+		document.addEventListener("visibilitychange", onVisible);
+		return () => document.removeEventListener("visibilitychange", onVisible);
+	}, [refresh]);
 
 	const loadSessions = useCallback(async () => {
 		const res = await fetch("/api/anki/sessions", { cache: "no-store" }).catch(() => null);
@@ -127,12 +166,6 @@ export function ReviewSession() {
 		}
 	}, [current, router]);
 
-	const sync = useCallback(async () => {
-		setSyncNote("Syncing to AnkiWeb…");
-		const res = await fetch("/api/anki/sync", { method: "POST" }).catch(() => null);
-		setSyncNote(res?.ok ? "Synced to AnkiWeb" : "Sync failed — Anki will sync next time it opens");
-	}, []);
-
 	// Waiting on a learning step: check again when it comes due.
 	const dueAt = view.kind === "next" && view.state === "waiting" ? view.dueAt : null;
 	useEffect(() => {
@@ -150,7 +183,7 @@ export function ReviewSession() {
 
 	const grade = useCallback(
 		async (ease: AnkiEase) => {
-			if (!card || !revealed || busy) return;
+			if (!card || !revealed || busy || syncing) return;
 			setBusy(true);
 			stopAudio();
 			try {
@@ -171,7 +204,7 @@ export function ReviewSession() {
 				setBusy(false);
 			}
 		},
-		[card, revealed, busy, load, sync],
+		[card, revealed, busy, syncing, load, sync],
 	);
 
 	const replay = useCallback(() => {
@@ -279,7 +312,9 @@ export function ReviewSession() {
 							</Button>
 						</div>
 					)}
-					{view.kind === "loading" && <p className="mt-16 text-center text-sm text-muted-foreground">Loading cards…</p>}
+					{view.kind === "loading" && (
+						<p className="mt-16 text-center text-sm text-muted-foreground">{syncing ? "Syncing with AnkiWeb…" : "Loading cards…"}</p>
+					)}
 					{view.kind === "error" && (
 						<Notice title="Something went wrong" body={view.message} action={() => void load()} />
 					)}
@@ -303,6 +338,7 @@ export function ReviewSession() {
 						<div className="flex flex-col gap-2 pt-1">
 							<CardFrame html={revealed ? card.answer : card.question} css={card.css} onMessage={onFrame} />
 							<p className="truncate text-xs text-muted-foreground/70">{card.deckName.split("::").pop()}</p>
+							{syncNote === SYNC_FAILED && <p className="text-xs text-muted-foreground/70">{SYNC_FAILED}</p>}
 						</div>
 					)}
 				</div>
@@ -317,7 +353,7 @@ export function ReviewSession() {
 									<button
 										key={ease}
 										type="button"
-										disabled={busy}
+										disabled={busy || syncing}
 										onClick={() => void grade(ease)}
 										className={cn(
 											"relative flex flex-col items-center rounded-md border py-2 text-sm transition-colors disabled:opacity-50",

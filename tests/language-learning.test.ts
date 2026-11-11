@@ -21,7 +21,7 @@ import {
 import { profileForSpeech, studyLanguageOf } from "../src/core/languages.ts";
 import { sanitizeUserSettings } from "../src/core/settings.ts";
 import { parseAgentSettingsBody } from "../src/server/settings-body.ts";
-import { ankiAnswer, ankiSync, pairAudioFields } from "../src/server/anki.ts";
+import { ankiAnswer, ankiAutoSync, ankiSync, pairAudioFields } from "../src/server/anki.ts";
 import { composeInstructions } from "../src/agent/teacher-agent.ts";
 import { ankiTools } from "../src/agent/tools/anki.ts";
 import { LANGUAGES } from "../src/core/languages.ts";
@@ -269,6 +269,53 @@ describe("ankiSync", () => {
 	it("stops waiting when Anki asks on the Mac for a full sync", async () => {
 		const { error } = await syncing(["waitingForUser"]);
 		assert.match(error ?? "", /full sync/);
+	});
+});
+
+describe("ankiAutoSync", () => {
+	// The 10-minute background sync: never throws, logs only failures worth reading.
+	const ticking = async (studying: boolean, reply: (method: string) => Response) => {
+		const methods: string[] = [];
+		const logged: unknown[][] = [];
+		const realFetch = globalThis.fetch;
+		const realError = console.error;
+		globalThis.fetch = async (_input, init) => {
+			const body = JSON.parse(String(init?.body));
+			methods.push(body.method);
+			return reply(body.method);
+		};
+		console.error = (...args: unknown[]) => void logged.push(args);
+		try {
+			await ankiAutoSync(studying);
+			return { methods, logged };
+		} finally {
+			globalThis.fetch = realFetch;
+			console.error = realError;
+		}
+	};
+	const succeeding = (method: string) =>
+		Response.json({ jsonrpc: "2.0", id: 1, result: method === "collection.sync" ? { operationId: "op" } : { state: "succeeded" } });
+
+	it("syncs while a language is being studied", async () => {
+		const { methods, logged } = await ticking(true, succeeding);
+		assert.deepEqual(methods, ["collection.sync", "operations.get"]);
+		assert.equal(logged.length, 0);
+	});
+
+	it("does nothing with Studying set to None", async () => {
+		const { methods } = await ticking(false, succeeding);
+		assert.deepEqual(methods, []);
+	});
+
+	it("stays quiet while Anki is closed, and logs any other failure", async () => {
+		const closed = await ticking(true, () => {
+			throw new TypeError("fetch failed");
+		});
+		assert.equal(closed.logged.length, 0);
+		const failed = await ticking(true, (method) =>
+			Response.json({ jsonrpc: "2.0", id: 1, result: method === "collection.sync" ? { operationId: "op" } : { state: "failed", error: { message: "no network" } } }),
+		);
+		assert.match(String(failed.logged[0]?.[1]), /no network/);
 	});
 });
 
