@@ -38,7 +38,7 @@ export function Say({ node, children }: { node?: unknown; children?: ReactNode }
 	};
 	return (
 		<span className="lh-say" lang={profile.speech}>
-			{glossAllowed ? <GlossPopup text={text}>{children}</GlossPopup> : children}
+			{glossAllowed ? <GlossPopup text={text} lang={profile.speech}>{children}</GlossPopup> : children}
 			{/* A span, not a <button>: these runs often sit inside quiz options, which are buttons themselves. */}
 			<span
 				role="button"

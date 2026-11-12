@@ -45,7 +45,8 @@ function loadGloss(text: string): Promise<Gloss> {
 const HOVER_OPEN_MS = 250;
 const HOVER_CLOSE_MS = 200;
 
-export function GlossPopup({ text, children }: { text: string; children: ReactNode }) {
+/** `lang` tags the popup's words (it renders in a portal, outside the run's own lang). */
+export function GlossPopup({ text, lang, children }: { text: string; lang: string; children: ReactNode }) {
 	const [open, setOpen] = useState(false);
 	const [gloss, setGloss] = useState<Gloss | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -101,7 +102,7 @@ export function GlossPopup({ text, children }: { text: string; children: ReactNo
 					) : !gloss ? (
 						<div className="text-muted-foreground">…</div>
 					) : (
-						<GlossBody gloss={gloss} />
+						<GlossBody gloss={gloss} lang={lang} />
 					)}
 				</Popover.Content>
 			</Popover.Portal>
@@ -134,7 +135,7 @@ function Senses({ defs }: { defs: string[] }) {
 	);
 }
 
-function GlossBody({ gloss }: { gloss: Gloss }) {
+function GlossBody({ gloss, lang }: { gloss: Gloss; lang: string }) {
 	// Every word of the language, read or not (a name JMdict lacks still says "not in dictionary"); punctuation drops.
 	const words = gloss.words.filter((w) => w.reading || CJK.test(w.text));
 	return (
@@ -143,7 +144,7 @@ function GlossBody({ gloss }: { gloss: Gloss }) {
 			<ul className="m-0 list-none space-y-1.5 p-0">
 				{words.map((w, i) => (
 					<li key={i} className="leading-snug">
-						<span className="text-base text-foreground">{w.text}</span>{" "}
+						<span className="text-base text-foreground" lang={lang}>{w.text}</span>{" "}
 						<span className="text-muted-foreground">{w.reading}</span>
 						{w.entries.length === 0 ? (
 							<div className="text-xs text-muted-foreground/70">not in dictionary</div>

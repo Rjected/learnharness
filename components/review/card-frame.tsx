@@ -6,12 +6,15 @@
  * the app's can't break the card). The app is always dark, so the card gets
  * Anki's night-mode classes and a dark color scheme — a note type with no
  * colors of its own sits on the app's background instead of a white page.
+ * The document carries the studied language's lang tag, so browsers draw
+ * Chinese with Chinese letterforms rather than Japanese ones.
  * Play buttons and key presses inside the frame are forwarded to the parent
  * with postMessage; the frame reports its content height (the body's, not
  * the viewport's, so it can shrink again) and never scrolls on its own.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useStudyProfile } from "@/components/language/status";
 
 const FRAME_SCRIPT = `
 document.addEventListener("click", (e) => {
@@ -45,14 +48,15 @@ export type FrameMessage =
 	| { lh: "tap" }
 	| { lh: "height"; h: number };
 
-export function buildCardDocument(html: string, css: string, ord = 0): string {
-	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style><style>${FRAME_STYLE}</style></head><body class="card card${ord + 1} nightMode night_mode"><div>${html}</div><script>${FRAME_SCRIPT}</script></body></html>`;
+export function buildCardDocument(html: string, css: string, lang?: string, ord = 0): string {
+	return `<!doctype html><html${lang ? ` lang="${lang}"` : ""}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style><style>${FRAME_STYLE}</style></head><body class="card card${ord + 1} nightMode night_mode"><div>${html}</div><script>${FRAME_SCRIPT}</script></body></html>`;
 }
 
 export function CardFrame({ html, css, onMessage }: { html: string; css: string; onMessage: (m: FrameMessage) => void }) {
 	const ref = useRef<HTMLIFrameElement>(null);
 	const [height, setHeight] = useState(240);
-	const doc = useMemo(() => buildCardDocument(html, css), [html, css]);
+	const lang = useStudyProfile()?.speech;
+	const doc = useMemo(() => buildCardDocument(html, css, lang), [html, css, lang]);
 	const handler = useRef(onMessage);
 	handler.current = onMessage;
 
