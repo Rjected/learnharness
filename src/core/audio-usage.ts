@@ -1,7 +1,8 @@
 /**
  * Audio usage pricing: Gemini TTS clips and dictation
  * transcriptions, priced from Google's published paid-tier rates (USD per
- * 1M tokens, ai.google.dev/gemini-api/docs/pricing, checked 2026-10-26).
+ * 1M tokens, ai.google.dev/gemini-api/docs/pricing, checked 2026-10-26;
+ * Gemini 4 Hydrogen added 2026-11-21).
  * The model catalog the turns are priced from has neither the TTS models
  * nor separate audio-input rates, hence this table. Pure, browser-safe.
  */
@@ -25,6 +26,7 @@ const RATES: Record<string, PriceEntry> = {
 	"gemini-3.1-flash-tts-preview": { input: 1, output: 20 },
 	"gemini-2.5-flash-preview-tts": { input: 0.5, output: 10 },
 	"gemini-2.5-pro-preview-tts": { input: 1, output: 20 },
+	"gemini-4-hydrogen": { input: 1.5, output: 7.5 },
 	"gemini-3.8-flash": { input: 0.75, output: 3.75, from2027: { input: 1.5, output: 7.5 } },
 	"gemini-3.6-flash": { input: 0.75, output: 3.75, from2027: { input: 1.5, output: 7.5 } },
 	"gemini-3.5-flash-lite": { input: 0.3, output: 2.5 },

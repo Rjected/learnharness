@@ -8,12 +8,12 @@ import { callCost } from "../src/server/pricing.ts";
 
 const specimens = [
 	{ id: "recursive/flint-v1.0:free", input: ["text"] },
-	{ id: "xingchen-agi/xing4.0-29b-a4b:free", input: ["text"] },
+	{ id: "liquid/lfm-3-1.7b:free", input: ["text"] },
 	{ id: "nvidia/nemotron-3.5-super-vl:free", input: ["text", "image"] },
 	{ id: "openrouter/free", input: ["text", "image"] },
 ];
 
-describe("native 1.4 OpenRouter free catalog (offline, no live discovery)", { concurrency: false }, () => {
+describe("native 1.6 OpenRouter free catalog (offline, no live discovery)", { concurrency: false }, () => {
 	for (const { id, input } of specimens) {
 		it(`${id}: shared listing, validation, tool-capable engine, native modality, and zero cost`, async () => {
 			const before = process.env;
